@@ -19,25 +19,24 @@ object GeminiApiClient {
     .build()
 
   suspend fun askCopilot(prompt: String, contextInfo: String): String = withContext(Dispatchers.IO) {
-    val apiKey = BuildConfig.GEMINI_API_KEY
-    if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-      return@withContext "Gemini API key is not configured. Please add your Gemini API key in the Secrets panel in AI Studio to enable the AI Copilot."
+    // Production Blocked: Gemini API key has been removed from the client side.
+    // We now route Copilot requests through the Agent Wallet Backend boundary.
+    val backendUrl = BuildConfig.BACKEND_URL
+    if (backendUrl.isBlank() || backendUrl == "http://localhost:8080") {
+      return@withContext "Agent Wallet Backend is not configured. Please set BACKEND_URL in your Secrets panel to enable the AI Copilot."
     }
 
     val systemInstruction = "You are the expert Financial & Policy Copilot for Agent Wallet OS — an AI-agent payment wallet, policy engine, double-entry ledger, and x402/MPP payment protocol gateway. Context:\n$contextInfo"
+    val fullPrompt = "$systemInstruction\n\nUser Request: $prompt"
 
     val jsonBody = JSONObject().apply {
-      put("systemInstruction", JSONObject().apply {
-        put("parts", JSONArray().put(JSONObject().put("text", systemInstruction)))
-      })
-      put("contents", JSONArray().put(JSONObject().apply {
-        put("parts", JSONArray().put(JSONObject().put("text", prompt)))
-      }))
+      put("prompt", fullPrompt)
     }
 
     val body = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
     val request = Request.Builder()
-      .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey")
+      .url("$backendUrl/v1/ai/gemini")
       .post(body)
       .build()
 

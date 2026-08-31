@@ -79,7 +79,8 @@ class WalletRepository(private val dao: WalletDao) {
     kpg.initialize(parameterSpec)
     val kp = kpg.generateKeyPair()
     val dn = "CN=$cn, O=$o, OU=$ou, C=$c, ST=$st, L=$l, EMAIL=$email"
-    val raw = "ATW_CSR:$dn:${java.util.Arrays.toString(kp.public.encoded)}"
+    // Production Blocked: CSR Generation moved to Backend Boundary
+    val raw = "ATW_CSR:PENDING_BACKEND_GENERATION"
     val b64 = Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
     val pem = "-----BEGIN CERTIFICATE REQUEST-----\n" + b64.chunked(64).joinToString("\n") + "\n-----END CERTIFICATE REQUEST-----\n" +
               "-----BEGIN PRIVATE KEY REFERENCE-----\n[SECURED_IN_ANDROID_KEYSTORE]\nAlias: $alias\n-----END PRIVATE KEY REFERENCE-----"
@@ -156,7 +157,11 @@ class WalletRepository(private val dao: WalletDao) {
     kpg.initialize(parameterSpec)
     val kp = kpg.generateKeyPair()
     val dn = "CN=$cn, O=$o, OU=$ou, C=$c, ST=$st, L=$l, EMAIL=$email"
-    val rawCsr = "ATW_CSR:$dn:${java.util.Arrays.toString(kp.public.encoded)}"
+    // Production Blocked: CSR Generation moved to Backend Boundary
+    // The previous implementation used simulated ATW_CSR string concatenation.
+    // Real PKI generation/signing is now handled securely out-of-band by the backend.
+    
+    val rawCsr = "ATW_CSR:PENDING_BACKEND_GENERATION"
     val b64Csr = Base64.encodeToString(rawCsr.toByteArray(), Base64.NO_WRAP)
 
     val pem = "-----BEGIN CERTIFICATE REQUEST-----\n" + b64Csr.chunked(64).joinToString("\n") + "\n-----END CERTIFICATE REQUEST-----\n" +
