@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: agent_wallet
+      POSTGRES_PASSWORD: agent_wallet
+      POSTGRES_DB: agent_wallet
+    ports:
+      ["5432:5432"]
+    volumes:
+      - agent-wallet-postgres:/var/lib/postgresql/data
+volumes:
+  agent-wallet-postgres:
