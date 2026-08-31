@@ -17,12 +17,6 @@ interface WalletDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertWallet(wallet: AgentWalletEntity)
 
-  @Query("UPDATE agent_wallets SET usdcBalance = usdcBalance - :amount, monthlySpent = monthlySpent + :amount WHERE id = :walletId")
-  suspend fun deductBalance(walletId: String, amount: Double)
-
-  @Query("UPDATE agent_wallets SET usdcBalance = usdcBalance + :amount WHERE id = :walletId")
-  suspend fun addBalance(walletId: String, amount: Double)
-
   @Query("SELECT * FROM ledger_transactions ORDER BY timestamp DESC")
   fun getAllTransactions(): Flow<List<LedgerTransactionEntity>>
 

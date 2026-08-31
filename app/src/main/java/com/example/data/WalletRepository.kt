@@ -194,7 +194,7 @@ class WalletRepository(private val dao: WalletDao) {
   suspend fun processPaymentChallenge(
     wallet: AgentWalletEntity,
     vendorName: String,
-    requestedAmount: Double,
+    requestedAmount: Long,
     protocol: String,
     chain: String
   ): PaymentResult {
@@ -213,7 +213,7 @@ class WalletRepository(private val dao: WalletDao) {
     val passed = vendorAllowed && chainAllowed && underPerRequestLimit && sufficientBalance && underMonthlyLimit
 
     val status = if (passed) {
-      if (wallet.requireApproval && requestedAmount > 10.0) "PENDING_APPROVAL" else "APPROVED"
+      if (wallet.requireApproval && requestedAmount > 10_000_000L) "PENDING_APPROVAL" else "APPROVED"
     } else {
       "DENIED"
     }
@@ -251,7 +251,8 @@ class WalletRepository(private val dao: WalletDao) {
     dao.insertTransaction(tx)
 
     if (status == "APPROVED") {
-      dao.deductBalance(wallet.id, requestedAmount)
+      // Production Blocked: Balance deductions are no longer performed locally.
+      // This is handled atomically by the PostgreSQL backend ledger.
     }
 
     dao.insertAuditLog(
@@ -268,8 +269,10 @@ class WalletRepository(private val dao: WalletDao) {
     return PaymentResult(status, receiptHash, challengeDetails, passed)
   }
 
-  suspend fun depositToWallet(walletId: String, amount: Double) {
-    dao.addBalance(walletId, amount)
+  suspend fun depositToWallet(walletId: String, amount: Long) {
+    // Production Blocked: Local deposits are no longer permitted.
+    // This is handled by the PostgreSQL backend.
+    
     dao.insertAuditLog(
       AuditLogEntity(
         id = "audit_" + UUID.randomUUID().toString().substring(0, 8),

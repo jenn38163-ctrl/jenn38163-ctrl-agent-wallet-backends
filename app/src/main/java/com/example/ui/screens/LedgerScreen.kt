@@ -98,7 +98,7 @@ fun LedgerScreen(
                       Text("${tx.protocol} on ${tx.chain} • Status: ${tx.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(
-                      text = "$${String.format("%.2f", tx.amountUsdc)} USDC",
+                      text = "${com.example.utils.CurrencyUtils.formatUsd(tx.amountUsdc)} USDC",
                       style = MaterialTheme.typography.titleMedium,
                       fontWeight = FontWeight.Bold,
                       color = if (tx.status == "APPROVED") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
@@ -117,11 +117,11 @@ fun LedgerScreen(
                       Spacer(modifier = Modifier.height(2.dp))
                       Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("DR  ${tx.debitAccountId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("$${String.format("%.2f", tx.amountUsdc)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text("${com.example.utils.CurrencyUtils.formatUsd(tx.amountUsdc)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                       }
                       Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("CR  ${tx.creditAccountId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("$${String.format("%.2f", tx.amountUsdc)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text("${com.example.utils.CurrencyUtils.formatUsd(tx.amountUsdc)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                       }
                     }
                   }

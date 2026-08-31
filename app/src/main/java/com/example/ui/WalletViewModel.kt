@@ -46,14 +46,14 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
       GPayKeyPair(
         id = "key_primary_01",
         name = "Primary Production Key (2026)",
-        privateKey = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCPSuFr4iSIaQprjjchHPyDu2NXFe0vDBoTpPkYaK9dehRANCAATnaFz/vQKuO90pxsINyVNWojabHfbx9qIJ6uD7Q7ZSxmtyo/Ez3/o2kDT8g0pIdyVIYktCsq65VoQIDWSh2Bdm",
+        privateKey = "PENDING_SECURE_PROVISIONING",
         publicKey = "BOdoXP+9Aq473SnGwg3JU1aiNpsd9vH2ognq4PtDtlLGa3Kj8TPf+jaQNPyDSkh3JUhiS0KyrrlWhAgNZKHYF2Y=",
         isActive = true
       ),
       GPayKeyPair(
         id = "key_secondary_02",
         name = "Secondary Rotation Key (Grace Period)",
-        privateKey = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgWV4oK8c/MZkCLk4qSCNjW0Zm6H0CBCtSYxkXkC9FBHehRANCAAQPldOnhO2/oXjdJD1dwlFPiNs6fcdoRgFu3/Z0iKj24SjTGyLRGAtYWLGXBZdPdPj3T2bJRHRVhE8Bc2AjkT7n",
+        privateKey = "PENDING_SECURE_PROVISIONING_2",
         publicKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/1+3HBVSbdv+j7NaArdgMyoSAM43yRydzqdg1TxodSzA96Dj4Mc1EiKroxxunavVIvdxGnJeFViTzFvzFRxyCw==",
         isActive = true
       )
@@ -188,7 +188,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     _lastPaymentResult.value = null
   }
 
-  fun simulatePaymentChallenge(walletId: String, vendorName: String, requestedAmount: Double, protocol: String, chain: String) {}
-  fun createWallet(name: String, org: String, bal: Double, monthly: Double, perReq: Double, vendors: String, chains: String, approval: Boolean) {}
-  fun depositFunds(walletId: String, amount: Double) {}
+  fun simulatePaymentChallenge(walletId: String, vendorName: String, requestedAmount: Long, protocol: String, chain: String) {}
+  fun createWallet(name: String, org: String, bal: Long, monthly: Long, perReq: Long, vendors: String, chains: String, approval: Boolean) {}
+  fun depositFunds(walletId: String, amount: Long) {}
 }

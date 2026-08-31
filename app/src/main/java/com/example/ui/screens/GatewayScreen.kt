@@ -1,4 +1,5 @@
 package com.example.ui.screens
+import com.example.utils.CurrencyUtils
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -23,7 +24,7 @@ import com.example.data.PaymentResult
 fun GatewayScreen(
   wallets: List<AgentWalletEntity>,
   lastPaymentResult: PaymentResult?,
-  onSimulatePayment: (String, String, Double, String, String) -> Unit,
+  onSimulatePayment: (String, String, Long, String, String) -> Unit,
   onClearResult: () -> Unit
 ) {
   var selectedWalletId by remember { mutableStateOf(wallets.firstOrNull()?.id ?: "") }
@@ -96,7 +97,7 @@ fun GatewayScreen(
                   ) {
                     Column {
                       Text(w.name, fontWeight = FontWeight.SemiBold)
-                      Text("Balance: $${w.usdcBalance} | Limit: $${w.perRequestLimit}/req", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                      Text("Balance: ${com.example.utils.CurrencyUtils.formatUsd(w.usdcBalance)} | Limit: ${com.example.utils.CurrencyUtils.formatUsd(w.perRequestLimit)}/req", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (isSelected) {
                       Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -165,7 +166,7 @@ fun GatewayScreen(
 
             Button(
               onClick = {
-                val amt = amountStr.toDoubleOrNull() ?: 0.01
+                val amt = CurrencyUtils.parseCurrencyInput(amountStr)
                 if (selectedWallet != null) {
                   onSimulatePayment(selectedWallet.id, vendorName, amt, protocol, chain)
                 }

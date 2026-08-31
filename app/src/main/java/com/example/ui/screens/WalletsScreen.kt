@@ -1,4 +1,5 @@
 package com.example.ui.screens
+import com.example.utils.CurrencyUtils
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -21,8 +22,8 @@ import com.example.data.AgentWalletEntity
 @Composable
 fun WalletsScreen(
   wallets: List<AgentWalletEntity>,
-  onCreateWallet: (String, String, Double, Double, Double, String, String, Boolean) -> Unit,
-  onDeposit: (String, Double) -> Unit
+  onCreateWallet: (String, String, Long, Long, Long, String, String, Boolean) -> Unit,
+  onDeposit: (String, Long) -> Unit
 ) {
   var showCreateDialog by remember { mutableStateOf(false) }
   var depositWalletId by remember { mutableStateOf<String?>(null) }
@@ -99,7 +100,7 @@ fun WalletsScreen(
               }
               Column(horizontalAlignment = Alignment.End) {
                 Text(
-                  text = "$${String.format("%.2f", wallet.usdcBalance)}",
+                  text = "${com.example.utils.CurrencyUtils.formatUsd(wallet.usdcBalance)}",
                   style = MaterialTheme.typography.titleLarge,
                   fontWeight = FontWeight.Bold,
                   color = MaterialTheme.colorScheme.secondary
@@ -117,11 +118,11 @@ fun WalletsScreen(
             ) {
               Column {
                 Text("Monthly Budget", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("$${wallet.monthlySpent.toInt()} / $${wallet.monthlyLimit.toInt()}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("${com.example.utils.CurrencyUtils.formatUsd(wallet.monthlySpent)} / ${com.example.utils.CurrencyUtils.formatUsd(wallet.monthlyLimit)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
               }
               Column {
                 Text("Max / Request", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("$${wallet.perRequestLimit}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text("${com.example.utils.CurrencyUtils.formatUsd(wallet.perRequestLimit)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
               }
               Column {
                 Text("Approval Req.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -190,9 +191,9 @@ fun WalletsScreen(
               onCreateWallet(
                 name,
                 org,
-                balance.toDoubleOrNull() ?: 50.0,
-                monthlyLimit.toDoubleOrNull() ?: 100.0,
-                perReq.toDoubleOrNull() ?: 5.0,
+                CurrencyUtils.parseCurrencyInput(balance),
+                CurrencyUtils.parseCurrencyInput(monthlyLimit),
+                CurrencyUtils.parseCurrencyInput(perReq),
                 vendors,
                 chains,
                 requireApproval
@@ -230,7 +231,7 @@ fun WalletsScreen(
       confirmButton = {
         Button(
           onClick = {
-            val amt = amountStr.toDoubleOrNull() ?: 0.0
+            val amt = CurrencyUtils.parseCurrencyInput(amountStr)
             if (amt > 0) {
               onDeposit(targetId, amt)
               depositWalletId = null

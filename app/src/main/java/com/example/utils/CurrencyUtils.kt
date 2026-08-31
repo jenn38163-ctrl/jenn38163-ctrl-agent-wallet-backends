@@ -2,21 +2,31 @@ package com.example.utils
 
 import java.text.NumberFormat
 import java.util.Locale
+import java.math.BigDecimal
 
 object CurrencyUtils {
-  fun formatUsd(amount: Double): String {
+  // Assuming 1 USDC = 1,000,000 units (6 decimals)
+  private const val UNITS_PER_USDC = 1_000_000L
+
+  fun formatUsd(amountUnits: Long): String {
+    val amount = amountUnits.toDouble() / UNITS_PER_USDC
     val format = NumberFormat.getCurrencyInstance(Locale.US)
     return format.format(amount)
   }
 
   fun formatUsd(amountString: String): String {
-    val cleaned = amountString.replace(Regex("[^\\d.]"), "")
-    val parsed = cleaned.toDoubleOrNull() ?: 0.0
+    val parsed = parseCurrencyInput(amountString)
     return formatUsd(parsed)
   }
 
-  fun parseCurrencyInput(input: String): Double {
+  fun parseCurrencyInput(input: String): Long {
     val cleaned = input.replace(Regex("[^\\d.]"), "")
-    return cleaned.toDoubleOrNull() ?: 0.0
+    if (cleaned.isEmpty()) return 0L
+    return try {
+        val bd = BigDecimal(cleaned)
+        bd.multiply(BigDecimal(UNITS_PER_USDC)).toLong()
+    } catch (e: Exception) {
+        0L
+    }
   }
 }

@@ -8,10 +8,10 @@ data class AgentWalletEntity(
   @PrimaryKey val id: String,
   val name: String,
   val organization: String,
-  val usdcBalance: Double,
-  val monthlyLimit: Double,
-  val monthlySpent: Double,
-  val perRequestLimit: Double,
+  val usdcBalance: Long,
+  val monthlyLimit: Long,
+  val monthlySpent: Long,
+  val perRequestLimit: Long,
   val allowedVendors: String, // comma separated e.g. "You.com,OpenAI,Financial APIs,SaaS Vendors"
   val allowedChains: String, // e.g. "Base,Solana,Tempo"
   val requireApproval: Boolean,

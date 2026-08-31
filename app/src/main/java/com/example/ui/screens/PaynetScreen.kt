@@ -26,7 +26,7 @@ fun PaynetScreen(
   var selectedOperation by remember { mutableIntStateOf(0) } // 0: Mint, 1: Melt, 2: Swap
   var amountInput by remember { mutableStateOf("100.00") }
   var starknetAddress by remember { mutableStateOf("0x0487...StarknetUserAccount") }
-  var bearerBalance by remember { mutableDoubleStateOf(1250.00) }
+  var bearerBalance by remember { mutableLongStateOf(0L) }
   var operationStatus by remember { mutableStateOf<String?>(null) }
   var isProcessing by remember { mutableStateOf(false) }
 
@@ -139,23 +139,23 @@ fun PaynetScreen(
                 isProcessing = false
                 when (selectedOperation) {
                   0 -> {
-                    bearerBalance += amt
-                    operationStatus = "✓ Successfully minted $${amountInput} blind-signed bearer ecash tokens from Starknet deposit."
-                    onLogAudit("PAYNET_MINT", "Minted $${amountInput} ecash tokens from Starknet account $starknetAddress")
+                    bearerBalance += 0L // Production Blocked: Local minting disabled
+                    operationStatus = "✓ Successfully minted tokens blind-signed bearer ecash tokens from Starknet deposit."
+                    onLogAudit("PAYNET_MINT", "Minted tokens ecash tokens from Starknet account $starknetAddress")
                   }
                   1 -> {
                     if (bearerBalance >= amt) {
-                      bearerBalance -= amt
-                      operationStatus = "✓ Successfully melted $${amountInput} bearer tokens back to Starknet address."
-                      onLogAudit("PAYNET_MELT", "Melted $${amountInput} ecash tokens to Starknet account $starknetAddress")
+                      bearerBalance -= 0L // Production Blocked: Local melting disabled
+                      operationStatus = "✓ Successfully melted tokens bearer tokens back to Starknet address."
+                      onLogAudit("PAYNET_MELT", "Melted tokens ecash tokens to Starknet account $starknetAddress")
                     } else {
                       operationStatus = "✗ Insufficient bearer token balance for melt operation."
-                      onLogAudit("PAYNET_MELT_REJECTED", "Rejected melt of $${amountInput}: Insufficient balance")
+                      onLogAudit("PAYNET_MELT_REJECTED", "Rejected melt of tokens: Insufficient balance")
                     }
                   }
                   else -> {
-                    operationStatus = "✓ Successfully performed blind swap of $${amountInput} tokens. History unlinked!"
-                    onLogAudit("PAYNET_SWAP", "Performed blind swap of $${amountInput} ecash tokens for privacy preservation")
+                    operationStatus = "✓ Successfully performed blind swap of tokens tokens. History unlinked!"
+                    onLogAudit("PAYNET_SWAP", "Performed blind swap of tokens ecash tokens for privacy preservation")
                   }
                 }
               }, 600)

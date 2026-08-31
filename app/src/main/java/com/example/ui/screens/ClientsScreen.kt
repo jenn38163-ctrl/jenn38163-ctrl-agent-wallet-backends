@@ -23,7 +23,7 @@ data class SystemClient(
   val name: String,
   val description: String,
   val defaultVendor: String,
-  val defaultAmount: Double,
+  val defaultAmount: Long,
   val defaultProtocol: String,
   val defaultChain: String,
   val icon: androidx.compose.ui.graphics.vector.ImageVector
@@ -33,7 +33,7 @@ data class SystemClient(
 @Composable
 fun ClientsScreen(
   wallets: List<AgentWalletEntity>,
-  onExecuteClientPayment: (walletId: String, vendor: String, amount: Double, protocol: String, chain: String) -> Unit
+  onExecuteClientPayment: (walletId: String, vendor: String, amount: Long, protocol: String, chain: String) -> Unit
 ) {
   val clients = remember {
     listOf(
@@ -41,7 +41,7 @@ fun ClientsScreen(
         name = "Rewards Gateway",
         description = "Distributes perks and gift cards via Giftbit for verified agent loyalty.",
         defaultVendor = "Giftbit API",
-        defaultAmount = 15.00,
+        defaultAmount = 15_000_000L,
         defaultProtocol = "x402",
         defaultChain = "Base",
         icon = Icons.Default.CardGiftcard
@@ -50,7 +50,7 @@ fun ClientsScreen(
         name = "REMIC OS",
         description = "Real Estate Mortgage Investment Conduit agent paying high-frequency data feeds.",
         defaultVendor = "Polygon.io Real Estate Data",
-        defaultAmount = 25.00,
+        defaultAmount = 25_000_000L,
         defaultProtocol = "x402",
         defaultChain = "Base",
         icon = Icons.Default.Home
@@ -59,7 +59,7 @@ fun ClientsScreen(
         name = "Sovereign Trust OS",
         description = "Autonomous compliance and regulatory auditing agent paying verification APIs.",
         defaultVendor = "Chainalysis Compliance API",
-        defaultAmount = 5.00,
+        defaultAmount = 5_000_000L,
         defaultProtocol = "HTTP 402",
         defaultChain = "Solana",
         icon = Icons.Default.VerifiedUser
@@ -68,7 +68,7 @@ fun ClientsScreen(
         name = "Research Agent",
         description = "Autonomous web search and literature review agent paying semantic search engines.",
         defaultVendor = "You.com Paid Search",
-        defaultAmount = 0.01,
+        defaultAmount = 10_000L,
         defaultProtocol = "MPP",
         defaultChain = "Tempo",
         icon = Icons.Default.Search
@@ -188,7 +188,7 @@ fun ClientsScreen(
                     verticalAlignment = Alignment.CenterVertically
                   ) {
                     Text(w.name, fontWeight = FontWeight.Medium)
-                    Text("$${w.usdcBalance} USDC", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                    Text("${com.example.utils.CurrencyUtils.formatUsd(w.usdcBalance)}", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                   }
                 }
               }
@@ -199,7 +199,7 @@ fun ClientsScreen(
               horizontalArrangement = Arrangement.SpaceBetween
             ) {
               Text("Target Vendor: ${selectedClient.defaultVendor}", style = MaterialTheme.typography.bodySmall)
-              Text("Amount: $${selectedClient.defaultAmount} USDC", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+              Text("Amount: ${com.example.utils.CurrencyUtils.formatUsd(selectedClient.defaultAmount)} USDC", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             }
             Row(
               modifier = Modifier.fillMaxWidth(),
@@ -218,7 +218,7 @@ fun ClientsScreen(
                   selectedClient.defaultProtocol,
                   selectedClient.defaultChain
                 )
-                executionResult = "Successfully invoked API for ${selectedClient.name} -> Authorized $${selectedClient.defaultAmount} to ${selectedClient.defaultVendor}!"
+                executionResult = "Successfully invoked API for ${selectedClient.name} -> Authorized ${com.example.utils.CurrencyUtils.formatUsd(selectedClient.defaultAmount)} to ${selectedClient.defaultVendor}!"
               },
               modifier = Modifier.fillMaxWidth().testTag("execute_client_api_btn")
             ) {

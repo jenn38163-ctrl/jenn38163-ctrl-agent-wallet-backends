@@ -10,7 +10,7 @@ data class LedgerTransactionEntity(
   val walletId: String,
   val agentName: String,
   val vendorName: String,
-  val amountUsdc: Double,
+  val amountUsdc: Long,
   val debitAccountId: String,
   val creditAccountId: String,
   val protocol: String, // MPP, x402, HTTP 402

@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun GooglePayDecryptScreen() {
   var recipientId by remember { mutableStateOf("merchant:12345678901234567890") }
-  var privateKey by remember { mutableStateOf("MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgCPSuFr4iSIaQprjjchHPyDu2NXFe0vDBoTpPkYaK9dehRANCAATnaFz/vQKuO90pxsINyVNWojabHfbx9qIJ6uD7Q7ZSxmtyo/Ez3/o2kDT8g0pIdyVIYktCsq65VoQIDWSh2Bdm") }
+  var privateKey by remember { mutableStateOf("PENDING_SECURE_PROVISIONING") }
   var encryptedJson by remember {
     mutableStateOf(
       "{\n" +
