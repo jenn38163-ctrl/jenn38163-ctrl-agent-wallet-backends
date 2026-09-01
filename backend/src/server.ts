@@ -1,17 +1,67 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import {createHash} from "node:crypto";
 import {config} from "./config.js";
 import {db} from "./db.js";
 import {migrate} from "./migrate.js";
 import {auth} from "./auth.js";
 import {audit} from "./audit.js";
 import {postPayment} from "./ledger.js";
+import {processGooglePayFunding} from "./google-pay.js";
 import {gateway, Capture} from "./settlement/index.js";
+
 const app=express();
-app.use(helmet());app.use(cors({origin:config.CORS_ORIGIN==="*" ? true:config.CORS_ORIGIN}));app.use(express.json({limit:"256kb"}));
+app.use(helmet());
+app.use(cors({origin:config.CORS_ORIGIN==="*" ? true:config.CORS_ORIGIN}));
+
+app.post("/v1/webhooks/payu", express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const signatureHeader = req.header("OpenPayu-Signature") ?? "";
+    const match = signatureHeader.match(/signature=([a-f0-9]+)/);
+    if (!match) return res.status(400).send("MISSING_SIGNATURE");
+    
+    const incomingSignature = match[1];
+    if (!config.PAYU_SECOND_KEY) return res.status(503).send("PAYU_KEY_NOT_CONFIGURED");
+    
+    const rawBody = req.body.toString('utf8');
+    const expectedSignature = createHash('md5').update(rawBody + config.PAYU_SECOND_KEY).digest('hex');
+    
+    if (incomingSignature !== expectedSignature) return res.status(401).send("INVALID_SIGNATURE");
+    
+    const data = JSON.parse(rawBody);
+    const extOrderId = data.order.extOrderId; // Our journal_entry_id
+    const status = data.order.status; 
+    
+    let newStatus = "SETTLEMENT_SUBMITTED";
+    if (status === "COMPLETED") newStatus = "SETTLEMENT_CONFIRMED";
+    else if (status === "CANCELED" || status === "REJECTED") newStatus = "SETTLEMENT_FAILED";
+    
+    if (newStatus !== "SETTLEMENT_SUBMITTED") {
+      // Reconcile and atomic transition
+      const result = await db.execute({
+        text:"UPDATE journal_entries SET status=$1 WHERE id=$2 AND status='SETTLEMENT_SUBMITTED' RETURNING id",
+        values:[newStatus, extOrderId]
+      } as any);
+      
+      // If it successfully transitioned (not a duplicate webhook or invalid state jump)
+      if (result.rows.length > 0) {
+        await audit("PAYU_WEBHOOK", "payu_provider", { extOrderId, status: newStatus });
+      }
+    }
+    
+    res.status(200).send("OK");
+  } catch (e) {
+    console.error(`PayU webhook error:`, e);
+    res.status(500).send("ERROR");
+  }
+});
+
+app.use(express.json({limit:"256kb"}));
+
 app.get("/healthz",(_,res)=>res.json({ok:true,service:"agent-wallet-backend"}));
 app.get("/readyz",async(_,res)=>{try{await db.execute("select 1");res.json({ok:true,database:"ready"})}catch{res.status(503).json({ok:false,database:"unavailable"})}});
+
 app.use("/v1",auth);
 
 app.post("/v1/wallets",async(req,res)=>{
@@ -57,7 +107,6 @@ app.post("/v1/payments/authorize",async(req,res)=>{
         currency: 'USDC',
         targetAddress: vendor
       }));
-      settlementStatus = "SETTLEMENT_CONFIRMED";
     } catch (settlementErr) {
       console.warn(`Settlement failed: ${settlementErr}`);
       settlementStatus = "SETTLEMENT_FAILED";
@@ -83,6 +132,25 @@ app.post("/v1/ai/gemini",async(req,res)=>{
     if(!r.ok)return res.status(502).json({error:"GEMINI_UPSTREAM_ERROR"});
     res.json(b)
   }catch{res.status(502).json({error:"GEMINI_UNAVAILABLE"})}
+});
+
+app.post("/v1/wallets/:id/fund/google-pay", async (req, res) => {
+  const organization = req.principal?.organizationId;
+  const walletId = req.params.id;
+  const { amount, token } = req.body ?? {};
+
+  if (!amount || !token) return res.status(400).json({ error: "amount and token are required" });
+
+  try {
+    const w = await db.execute({ text: "SELECT id FROM wallets WHERE id=$1 AND organization=$2", values: [walletId, organization] } as any);
+    if (!w.rows[0]) throw Object.assign(new Error("Wallet not found in tenant"), { status: 404 });
+
+    const result = await processGooglePayFunding(walletId, token, amount);
+    res.status(200).json({ status: "FUNDED", ...result });
+  } catch (e: any) {
+    const s = Number.isInteger(e?.status) ? e.status : 500;
+    res.status(s).json({ status: "ERROR", error: e?.message ?? "Funding failed" });
+  }
 });
 
 await migrate();
