@@ -9,6 +9,7 @@ import {auth} from "./auth.js";
 import {audit} from "./audit.js";
 import {postPayment} from "./ledger.js";
 import {processGooglePayFunding} from "./google-pay.js";
+import {createFacility, processDrawRequest} from "./facilities.js";
 import {gateway, Capture} from "./settlement/index.js";
 
 const app=express();
@@ -150,6 +151,35 @@ app.post("/v1/wallets/:id/fund/google-pay", async (req, res) => {
   } catch (e: any) {
     const s = Number.isInteger(e?.status) ? e.status : 500;
     res.status(s).json({ status: "ERROR", error: e?.message ?? "Funding failed" });
+  }
+});
+
+
+app.post("/v1/facilities", async (req, res) => {
+  const { facilityId, borrowerId, agentId, commitment } = req.body ?? {};
+  if (!facilityId || !borrowerId || !agentId || !commitment) return res.status(400).json({ error: "Missing required facility fields" });
+  
+  try {
+    const result = await createFacility(facilityId, borrowerId, agentId, String(commitment));
+    res.status(201).json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message ?? "Facility creation failed" });
+  }
+});
+
+app.post("/v1/facilities/:id/draw", async (req, res) => {
+  const facilityId = req.params.id;
+  const { drawAmount, walletId } = req.body ?? {};
+  const key = req.header("idempotency-key");
+  
+  if (!key || !drawAmount || !walletId) return res.status(400).json({ error: "Missing required draw fields or idempotency-key" });
+  
+  try {
+    const result = await processDrawRequest(facilityId, String(drawAmount), walletId, key);
+    res.status(201).json(result);
+  } catch (e: any) {
+    const s = Number.isInteger(e?.status) ? e.status : 500;
+    res.status(s).json({ status: "ERROR", error: e?.message ?? "Draw failed" });
   }
 });
 
