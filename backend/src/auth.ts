@@ -1,28 +1,41 @@
 import type {Request,Response,NextFunction} from "express";
-import {config} from "./config.js";
+import {createHash} from "node:crypto";
+import {db} from "./db.js";
 
 declare module 'express-serve-static-core' {
   interface Request {
     principal?: {
       organizationId: string;
       role: string;
+      scopes: string[];
     }
   }
 }
 
-export function auth(req:Request,res:Response,next:NextFunction){
-  const h=req.header("authorization")??"";
-  const t=h.startsWith("Bearer ")?h.slice(7):"";
+export async function auth(req:Request, res:Response, next:NextFunction) {
+  const h = req.header("authorization") ?? "";
+  const t = h.startsWith("Bearer ") ? h.slice(7) : "";
   
-  if(!t || t !== config.AGENT_WALLET_API_KEY) {
-    return res.status(401).json({error:"UNAUTHORIZED"});
+  if (!t) return res.status(401).json({error: "UNAUTHORIZED"});
+  
+  const tokenHash = createHash("sha256").update(t).digest("hex");
+  
+  try {
+    const cred = (await db.execute({
+      text: "SELECT organization_id, role, scopes FROM credentials WHERE token_hash=$1 AND status='ACTIVE'",
+      values: [tokenHash]
+    } as any)).rows[0] as any;
+    
+    if (!cred) return res.status(401).json({error: "INVALID_CREDENTIAL"});
+    
+    req.principal = {
+      organizationId: cred.organization_id,
+      role: cred.role,
+      scopes: cred.scopes ? cred.scopes.split(',') : []
+    };
+    
+    next();
+  } catch (e) {
+    res.status(500).json({error: "AUTH_ERROR"});
   }
-
-  // Bind tenant context
-  req.principal = {
-    organizationId: "AI Corp Enterprises", // In a real system, mapped from the API key
-    role: "AGENT"
-  };
-  
-  next();
 }

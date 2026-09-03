@@ -2,16 +2,19 @@ import { Action } from './Action.js';
 import { PaymentRequest } from './Request.js';
 
 export class Gateway {
-  private actions: Action[] = [];
+  private actions: Map<string, Action> = new Map();
 
-  public addAction(action: Action) {
-    this.actions.push(action);
+  public addAction(providerName: string, action: Action) {
+    this.actions.set(providerName, action);
   }
 
-  public async execute(request: PaymentRequest): Promise<void> {
-    const action = this.actions.find(a => a.supports(request));
+  public async execute(providerName: string, request: PaymentRequest): Promise<{ providerRef?: string }> | Promise<void> {
+    const action = this.actions.get(providerName);
     if (!action) {
-      throw new Error(`No action found that supports request type: ${request.type}`);
+      throw new Error(`Provider not found: ${providerName}`);
+    }
+    if (!action.supports(request)) {
+      throw new Error(`Provider ${providerName} does not support request type: ${request.type}`);
     }
     await action.execute(request);
   }

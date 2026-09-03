@@ -6,5 +6,5 @@ import { PaymentRequest, Capture } from './Request.js';
 export { PaymentRequest, Capture };
 
 export const gateway = new Gateway();
-gateway.addAction(new StarknetCaptureAction());
-gateway.addAction(new PayUSettlementAction());
+gateway.addAction('STARKNET', new StarknetCaptureAction());
+gateway.addAction('PAYU', new PayUSettlementAction());

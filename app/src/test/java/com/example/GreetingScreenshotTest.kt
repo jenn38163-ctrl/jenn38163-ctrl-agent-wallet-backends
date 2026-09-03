@@ -1,9 +1,9 @@
-package com.example
+package com.agentwallet.os
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
-import com.example.ui.screens.HomeScreen
-import com.example.ui.theme.MyApplicationTheme
+import com.agentwallet.os.ui.screens.HomeScreen
+import com.agentwallet.os.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule

@@ -29,8 +29,9 @@ export class TreasuryPolicyEngine {
    * Evaluates if a proposed transaction meets Treasury reporting criteria 
    * and maps it to the correct CARS accounting classifications.
    */
-  static evaluate(transactionType: string, amount: number): TreasuryClassification {
-    if (amount <= 0) {
+  static evaluate(transactionType: string, amount: string | number): TreasuryClassification {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    if (isNaN(num) || num <= 0) {
       throw new Error("TFX_POLICY_ERROR: Transactions must be > 0");
     }
 
