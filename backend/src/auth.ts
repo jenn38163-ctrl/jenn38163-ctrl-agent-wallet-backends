@@ -39,3 +39,16 @@ export async function auth(req:Request, res:Response, next:NextFunction) {
     res.status(500).json({error: "AUTH_ERROR"});
   }
 }
+
+export function requireScope(requiredScope: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.principal) {
+      return res.status(401).json({ error: "UNAUTHORIZED" });
+    }
+    const scopes = req.principal.scopes;
+    if (scopes.includes("all") || scopes.includes(requiredScope) || scopes.includes("admin:*")) {
+      return next();
+    }
+    return res.status(403).json({ error: "FORBIDDEN", requiredScope });
+  };
+}

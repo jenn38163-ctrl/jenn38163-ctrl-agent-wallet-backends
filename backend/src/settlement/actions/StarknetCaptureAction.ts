@@ -7,7 +7,10 @@ export class StarknetCaptureAction implements Action {
   }
 
   async execute(request: Capture): Promise<void> {
+    if (process.env.NODE_ENV === 'production' || process.env.STARKNET_ENABLED !== 'true') {
+      throw new Error("STARKNET_DISABLED: Starknet blockchain settlement adapter is disabled in production and not configured.");
+    }
     console.log(`[StarknetCaptureAction] Executing capture for ${request.payload.amount} ${request.payload.currency} to ${request.payload.targetAddress}`);
-    // Real Starknet.js logic goes here
   }
 }
+

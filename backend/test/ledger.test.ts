@@ -129,4 +129,22 @@ describe('Ledger Exact Math and Limits', () => {
     // Test credit limit
     await expect(processDrawRequest(testFacilityId, "AI Corp Enterprises", "1000.00", testWalletId, `draw_key_2_${Date.now()}`, {})).rejects.toThrow(/Credit risk check failed/);
   });
+
+  it('should reject facility draw to a wallet belonging to a different tenant', async () => {
+    const wRes = await db.execute({
+      text: "INSERT INTO wallets(name, organization, monthly_limit, per_request_limit) VALUES($1, $2, $3, $4) RETURNING id",
+      values: ["Tenant B Wallet", "Tenant B Corp", 500, 100]
+    } as any);
+    const tenantBWalletId = (wRes.rows[0] as any).id;
+
+    const key = `cross_tenant_draw_${Date.now()}`;
+    await expect(processDrawRequest(
+      testFacilityId, 
+      "AI Corp Enterprises", 
+      "50.00", 
+      tenantBWalletId, 
+      key, 
+      { crossTenant: true }
+    )).rejects.toThrow(/Wallet not found, inactive, or does not belong to tenant/);
+  });
 });

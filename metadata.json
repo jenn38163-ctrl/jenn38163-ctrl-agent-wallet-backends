@@ -1,6 +1,6 @@
 {
   "name": "Paynet & Crypto Suite",
-  "description": "Starknet privacy-preserving ecash (mint, melt, swap), Samsung ATW, Google Pay decryption, OpenPAYGO, and XLM Paymaster",
+  "description": "Agent Wallet with Firebase Authentication, Cloud Firestore (wallet-54645), Samsung ATW, Google Pay decryption, OpenPAYGO, and XLM Paymaster",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

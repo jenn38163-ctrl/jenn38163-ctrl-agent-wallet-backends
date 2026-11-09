@@ -21,19 +21,18 @@ import com.agentwallet.os.ui.GPayKeyPair
 @Composable
 fun GooglePayKeyManagementScreen(
   keyPairs: List<GPayKeyPair>,
-  onAddKeyPair: (String, String, String) -> Unit,
+  onAddKeyPair: (String, String) -> Unit,
   onToggleKey: (String) -> Unit,
   onDeleteKey: (String) -> Unit
 ) {
   var nameInput by remember { mutableStateOf("") }
-  var privateKeyInput by remember { mutableStateOf("") }
   var publicKeyInput by remember { mutableStateOf("") }
   var showAddDialog by remember { mutableStateOf(false) }
 
   Scaffold(
     topBar = {
       TopAppBar(
-        title = { Text("GPay Key Rotation Management", fontWeight = FontWeight.Bold) },
+        title = { Text("GPay Public Key & KMS Registry", fontWeight = FontWeight.Bold) },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
       )
     },
@@ -43,7 +42,7 @@ fun GooglePayKeyManagementScreen(
         containerColor = MaterialTheme.colorScheme.primary,
         modifier = Modifier.testTag("add_gpay_key_fab")
       ) {
-        Icon(Icons.Default.Add, contentDescription = "Add Key Pair")
+        Icon(Icons.Default.Add, contentDescription = "Register Public Key")
       }
     }
   ) { paddingValues ->
@@ -64,10 +63,10 @@ fun GooglePayKeyManagementScreen(
         ) {
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text("Graceful Key Rotation Manager", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Secure Server-Side KMS Registry", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
           }
           Text(
-            "Manage multiple merchant private/public key pairs for Google Pay ECv2 decryption. Maintaining old keys for at least 8 days after rotation ensures smooth transitions.",
+            "Google Pay ECv2 merchant decryption private keys remain strictly in secure server-side Hardware Security Modules (HSM/KMS). This registry manages public keys and rotation grace periods for token verification.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
           )
@@ -79,7 +78,7 @@ fun GooglePayKeyManagementScreen(
           modifier = Modifier.fillMaxWidth().weight(1f),
           contentAlignment = Alignment.Center
         ) {
-          Text("No key pairs stored. Tap '+' to add a decryption key.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          Text("No public keys registered. Tap '+' to register a rotation key.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
       } else {
         LazyColumn(
@@ -117,7 +116,7 @@ fun GooglePayKeyManagementScreen(
                     }
                     Column {
                       Text(kp.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                      Text(if (kp.isActive) "Active for Decryption" else "Archived / Grace Period", style = MaterialTheme.typography.bodySmall, color = if (kp.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                      Text(if (kp.isActive) "Active Verification Key" else "Grace Period / Archived", style = MaterialTheme.typography.bodySmall, color = if (kp.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                   }
                   Row {
@@ -133,9 +132,6 @@ fun GooglePayKeyManagementScreen(
 
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant)
 
-                Text("Private Key (PKCS#8 Base64):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(kp.privateKey.take(45) + "...", style = MaterialTheme.typography.bodySmall)
-
                 Text("Public Key (Uncompressed Point Base64):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(kp.publicKey, style = MaterialTheme.typography.bodySmall)
               }
@@ -149,43 +145,36 @@ fun GooglePayKeyManagementScreen(
   if (showAddDialog) {
     AlertDialog(
       onDismissRequest = { showAddDialog = false },
-      title = { Text("Add GPay Decryption Key Pair", fontWeight = FontWeight.Bold) },
+      title = { Text("Register GPay Public Key", fontWeight = FontWeight.Bold) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
           OutlinedTextField(
             value = nameInput,
             onValueChange = { nameInput = it },
-            label = { Text("Key Pair Name (e.g. Q3 Rotation Key)") },
+            label = { Text("Key Name (e.g. Q3 Rotation Key)") },
             modifier = Modifier.fillMaxWidth().testTag("key_name_input")
-          )
-          OutlinedTextField(
-            value = privateKeyInput,
-            onValueChange = { privateKeyInput = it },
-            label = { Text("Private Key (PKCS#8 Base64)") },
-            modifier = Modifier.fillMaxWidth().height(100.dp).testTag("private_key_input")
           )
           OutlinedTextField(
             value = publicKeyInput,
             onValueChange = { publicKeyInput = it },
             label = { Text("Public Key (Base64 Uncompressed)") },
-            modifier = Modifier.fillMaxWidth().height(80.dp).testTag("public_key_input")
+            modifier = Modifier.fillMaxWidth().height(100.dp).testTag("public_key_input")
           )
         }
       },
       confirmButton = {
         Button(
           onClick = {
-            if (nameInput.isNotBlank() && privateKeyInput.isNotBlank()) {
-              onAddKeyPair(nameInput, privateKeyInput, publicKeyInput.ifBlank { "BOdoXP+9Aq473SnGwg3JU1..." })
+            if (nameInput.isNotBlank() && publicKeyInput.isNotBlank()) {
+              onAddKeyPair(nameInput, publicKeyInput)
               nameInput = ""
-              privateKeyInput = ""
               publicKeyInput = ""
               showAddDialog = false
             }
           },
           modifier = Modifier.testTag("save_key_pair_btn")
         ) {
-          Text("Save & Add Key")
+          Text("Register Public Key")
         }
       },
       dismissButton = {

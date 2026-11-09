@@ -14,7 +14,11 @@ const s=z.object({
   PAYU_MERCHANT_POS_ID: z.string().optional(),
   PAYU_CLIENT_ID: z.string().optional(),
   PAYU_CLIENT_SECRET: z.string().optional(),
-  PAYU_SECOND_KEY: z.string().optional()
+  PAYU_SECOND_KEY: z.string().optional(),
+
+  // Pimlico (ERC-4337 Bundler & Paymaster) Configuration
+  PIMLICO_API_KEY: z.string().optional(),
+  PIMLICO_CHAIN_ID: z.string().default("8453")
 });
 
 export const config=s.parse(process.env);

@@ -15,18 +15,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.agentwallet.os.data.AtwAssetEntity
+import com.agentwallet.os.firebase.FirebaseAuthService
+import com.google.firebase.auth.FirebaseUser
 
 @Composable
 fun HomeScreen(
   assets: List<AtwAssetEntity>,
+  currentUser: FirebaseUser?,
   onNavigateToPrivateKey: () -> Unit,
   onNavigateToCsr: () -> Unit,
   onNavigateToCert: () -> Unit,
-  onNavigateToVault: () -> Unit
+  onNavigateToVault: () -> Unit,
+  onNavigateToFirebaseAuth: () -> Unit
 ) {
   val privateKeyCount = assets.count { it.assetType == "PRIVATE_KEY" }
   val csrCount = assets.count { it.assetType == "CSR" }
@@ -108,6 +113,61 @@ fun HomeScreen(
               Text("View Vault (${assets.size})")
             }
           }
+        }
+      }
+    }
+
+    // Firebase Backend Status Card
+    item {
+      Card(
+        onClick = onNavigateToFirebaseAuth,
+        modifier = Modifier.fillMaxWidth().testTag("firebase_status_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+      ) {
+        Row(
+          modifier = Modifier.padding(16.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(42.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFFFA000).copy(alpha = 0.2f)),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFFF57C00), modifier = Modifier.size(24.dp))
+            }
+            Column {
+              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Firebase Backend", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Surface(
+                  shape = RoundedCornerShape(6.dp),
+                  color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                ) {
+                  Text(
+                    text = "wallet-54645",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                  )
+                }
+              }
+              Text(
+                text = if (currentUser != null) "Logged in as ${currentUser.email}" else "Email/Password Auth • Tap to sign in",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+          }
+          Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
       }
     }

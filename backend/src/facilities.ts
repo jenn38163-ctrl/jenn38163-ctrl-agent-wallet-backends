@@ -43,6 +43,15 @@ export async function processDrawRequest(facilityId: string, tenantId: string, d
     
     if (!f) throw Object.assign(new Error("Facility not found"), { status: 404 });
     if (f.status !== 'ACTIVE') throw Object.assign(new Error("Facility is not active"), { status: 409 });
+
+    const walletCheck = (await tx.execute({
+      text: "SELECT id FROM wallets WHERE id = $1 AND organization = $2 AND status = 'ACTIVE' FOR UPDATE",
+      values: [walletId, tenantId]
+    } as any)).rows[0];
+
+    if (!walletCheck) {
+      throw Object.assign(new Error("Wallet not found, inactive, or does not belong to tenant"), { status: 403 });
+    }
     
     const classification = TreasuryPolicyEngine.evaluate('FACILITY_DRAW', drawAmount);
 

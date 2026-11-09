@@ -5,12 +5,13 @@ import {createHash} from "node:crypto";
 import {config} from "./config.js";
 import {db} from "./db.js";
 import {migrate, seedCredentials} from "./migrate.js";
-import {auth} from "./auth.js";
+import {auth, requireScope} from "./auth.js";
 import {audit} from "./audit.js";
 import {postPayment, revertPayment} from "./ledger.js";
 import {processGooglePayFunding} from "./google-pay.js";
 import {createFacility, processDrawRequest} from "./facilities.js";
 import {gateway, Capture} from "./settlement/index.js";
+import {SettlementWorker} from "./settlement_worker.js";
 
 const app=express();
 app.use(helmet());
@@ -101,7 +102,7 @@ app.get("/readyz",async(_,res)=>{try{await db.execute("select 1");res.json({ok:t
 
 app.use("/v1",auth);
 
-app.post("/v1/wallets",async(req,res)=>{
+app.post("/v1/wallets", requireScope("wallets:write"), async(req,res)=>{
   const {name,monthlyLimit,perRequestLimit}=req.body??{};
   const organization = req.principal?.organizationId;
   if(!organization) return res.status(403).json({error:"TENANT_NOT_FOUND"});
@@ -113,13 +114,13 @@ app.post("/v1/wallets",async(req,res)=>{
     res.status(201).json(w)
   }catch{res.status(500).json({error:"WALLET_CREATE_FAILED"})}});
 
-app.get("/v1/wallets/:id",async(req,res)=>{
+app.get("/v1/wallets/:id", requireScope("wallets:read"), async(req,res)=>{
   const organization = req.principal?.organizationId;
   const r=await db.execute({text:"SELECT * FROM wallets WHERE id=$1 AND organization=$2",values:[req.params.id, organization]} as any);
   if(!r.rows[0])return res.status(404).json({error:"NOT_FOUND"});
   res.json(r.rows[0])});
 
-app.post("/v1/payments/authorize",async(req,res)=>{
+app.post("/v1/payments/authorize", requireScope("payments:authorize"), async(req,res)=>{
   const {walletId,amount,currency="USDC",vendor,protocol="HTTP_402",provider="STARKNET"}=req.body??{};
   const key=req.header("idempotency-key");
   const organization = req.principal?.organizationId;
@@ -135,37 +136,13 @@ app.post("/v1/payments/authorize",async(req,res)=>{
        tenantId: organization, 
        walletId, amount, currency, vendor, protocol, provider, idempotencyKey:key
     });
-    
-    // Settlement Dispatch is Async / Separate
-    let settlementStatus = "SUBMITTED";
-    try {
-      const gRes = await gateway.execute(provider, new Capture({
-        intentId: intentId,
-        amount,
-        currency,
-        targetAddress: vendor
-      }));
-      
-      const providerRef = (gRes as any)?.providerRef;
-      if (providerRef) {
-         await db.execute({text:"UPDATE settlement_intents SET provider_ref=$1 WHERE id=$2",values:[providerRef, intentId]} as any);
-      }
-      
-      await db.execute({text:"UPDATE journal_entries SET status=$1 WHERE id=$2",values:[settlementStatus, entryId]} as any);
-      await db.execute({text:"UPDATE settlement_intents SET status=$1 WHERE id=$2",values:[settlementStatus, intentId]} as any);
-    } catch (settlementErr) {
-      console.warn(`Settlement failed: ${settlementErr}`);
-      settlementStatus = "FAILED";
-      await db.execute({text:"UPDATE settlement_intents SET status='FAILED' WHERE id=$1",values:[intentId]} as any);
-      await revertPayment(entryId);
-    }
 
     let auditHash = "";
     await db.transaction(async(tx) => {
-      auditHash = await audit(tx, "PAYMENT_POSTED",`wallet:${walletId}`,{entryId:entryId,amount,vendor,protocol,settlementStatus});
+      auditHash = await audit(tx, "PAYMENT_QUEUED",`wallet:${walletId}`,{entryId:entryId,intentId,amount,vendor,protocol,status:"PENDING"});
     });
 
-    const body={status:settlementStatus,journalEntryId:entryId,auditHash};
+    const body={status:"PENDING",journalEntryId:entryId,settlementIntentId:intentId,auditHash};
     
     await db.execute({text:"UPDATE idempotency_keys SET response_status=201, response_body=$2 WHERE key=$1",values:[key,JSON.stringify(body)]} as any);
     res.status(201).json(body)
@@ -175,7 +152,7 @@ app.post("/v1/payments/authorize",async(req,res)=>{
   }
 });
 
-app.post("/v1/ai/gemini",async(req,res)=>{
+app.post("/v1/ai/gemini", requireScope("ai:invoke"), async(req,res)=>{
   if(!config.GEMINI_API_KEY)return res.status(503).json({error:"GEMINI_NOT_CONFIGURED"});
   const p=req.body?.prompt;
   if(typeof p!=="string"||!p.length||p.length>20000)return res.status(400).json({error:"INVALID_PROMPT"});
@@ -187,7 +164,7 @@ app.post("/v1/ai/gemini",async(req,res)=>{
   }catch{res.status(502).json({error:"GEMINI_UNAVAILABLE"})}
 });
 
-app.post("/v1/wallets/:id/fund/google-pay", async (req, res) => {
+app.post("/v1/wallets/:id/fund/google-pay", requireScope("funding:write"), async (req, res) => {
   const organization = req.principal?.organizationId;
   const walletId = req.params.id;
   const { amount, token } = req.body ?? {};
@@ -204,7 +181,7 @@ app.post("/v1/wallets/:id/fund/google-pay", async (req, res) => {
   }
 });
 
-app.post("/v1/facilities", async (req, res) => {
+app.post("/v1/facilities", requireScope("facilities:write"), async (req, res) => {
   const organization = req.principal?.organizationId;
   if (!organization) return res.status(403).json({ error: "Tenant required" });
   const { facilityId, borrowerId, agentId, commitment } = req.body ?? {};
@@ -218,7 +195,7 @@ app.post("/v1/facilities", async (req, res) => {
   }
 });
 
-app.post("/v1/facilities/:id/draw", async (req, res) => {
+app.post("/v1/facilities/:id/draw", requireScope("facilities:draw"), async (req, res) => {
   const facilityId = req.params.id;
   const organization = req.principal?.organizationId;
   if (!organization) return res.status(403).json({ error: "Tenant required" });
@@ -239,4 +216,5 @@ app.post("/v1/facilities/:id/draw", async (req, res) => {
 
 await migrate();
 await seedCredentials();
+SettlementWorker.start();
 app.listen(config.PORT,()=>console.log(`Agent Wallet Backend listening on ${config.PORT}`));
