@@ -25,10 +25,14 @@ class GreetingScreenshotTest {
     composeTestRule.setContent {
       MyApplicationTheme {
         HomeScreen(
-          wallets = emptyList(),
-          transactions = emptyList(),
-          onNavigateToGateway = {},
-          onNavigateToWallets = {}
+          assets = emptyList(),
+          currentUser = null,
+          onNavigateToPrivateKey = {},
+          onNavigateToCsr = {},
+          onNavigateToCert = {},
+          onNavigateToVault = {},
+          onNavigateToFirebaseAuth = {},
+          onNavigateToTransactions = {}
         )
       }
     }

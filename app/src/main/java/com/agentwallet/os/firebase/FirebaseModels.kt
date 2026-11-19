@@ -1,5 +1,8 @@
 package com.agentwallet.os.firebase
 
+import com.google.firebase.firestore.IgnoreExtraProperties
+
+@IgnoreExtraProperties
 data class UserProfile(
   val uid: String = "",
   val email: String = "",
@@ -9,6 +12,7 @@ data class UserProfile(
   val createdAt: Long = System.currentTimeMillis()
 )
 
+@IgnoreExtraProperties
 data class FirestoreVaultAsset(
   val id: String = "",
   val name: String = "",
@@ -28,6 +32,7 @@ data class FirestoreVaultAsset(
   val projectId: String = "wallet-54645"
 )
 
+@IgnoreExtraProperties
 data class FirestoreWallet(
   val id: String = "",
   val name: String = "",
@@ -44,6 +49,7 @@ data class FirestoreWallet(
   val userId: String = ""
 )
 
+@IgnoreExtraProperties
 data class FirestoreAuditLog(
   val id: String = "",
   val timestamp: Long = System.currentTimeMillis(),
@@ -54,6 +60,13 @@ data class FirestoreAuditLog(
   val userId: String = ""
 )
 
+enum class PaymentStatusCategory {
+  PENDING,
+  COMPLETED,
+  FAILED
+}
+
+@IgnoreExtraProperties
 data class FirestoreTransaction(
   val id: String = "",
   val timestamp: Long = System.currentTimeMillis(),
@@ -61,6 +74,7 @@ data class FirestoreTransaction(
   val agentName: String = "",
   val vendorName: String = "",
   val amountUsdc: Long = 0,
+  val currency: String = "USDC",
   val debitAccountId: String = "",
   val creditAccountId: String = "",
   val protocol: String = "",
@@ -69,4 +83,21 @@ data class FirestoreTransaction(
   val receiptHash: String = "",
   val challengeDetails: String = "",
   val userId: String = ""
-)
+) {
+  fun statusCategory(): PaymentStatusCategory {
+    return when (status.trim().uppercase()) {
+      "COMPLETED", "CONFIRMED", "SETTLED", "APPROVED", "SUCCESS", "PAID" -> PaymentStatusCategory.COMPLETED
+      "FAILED", "DENIED", "REJECTED", "CANCELED", "CANCELLED", "REVERSED", "ERROR" -> PaymentStatusCategory.FAILED
+      else -> PaymentStatusCategory.PENDING
+    }
+  }
+
+  fun statusDisplayLabel(): String {
+    return when (statusCategory()) {
+      PaymentStatusCategory.COMPLETED -> "Completed"
+      PaymentStatusCategory.FAILED -> if (status.equals("DENIED", ignoreCase = true)) "Denied" else "Failed"
+      PaymentStatusCategory.PENDING -> if (status.equals("PENDING_APPROVAL", ignoreCase = true)) "Pending Approval" else "Pending"
+    }
+  }
+}
+

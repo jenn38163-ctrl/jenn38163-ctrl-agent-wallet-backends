@@ -17,5 +17,6 @@ data class LedgerTransactionEntity(
   val chain: String, // Tempo, Base, Solana
   val status: String, // APPROVED, DENIED, PENDING_APPROVAL
   val receiptHash: String,
-  val challengeDetails: String
+  val challengeDetails: String,
+  val currency: String = "USD"
 )

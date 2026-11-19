@@ -15,5 +15,6 @@ data class AgentWalletEntity(
   val allowedVendors: String, // comma separated e.g. "You.com,OpenAI,Financial APIs,SaaS Vendors"
   val allowedChains: String, // e.g. "Base,Solana,Tempo"
   val requireApproval: Boolean,
-  val didIdentity: String
+  val didIdentity: String,
+  val currency: String = "USD"
 )

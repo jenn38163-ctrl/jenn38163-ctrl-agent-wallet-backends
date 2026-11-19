@@ -12,7 +12,7 @@ import java.util.UUID
 
 @Database(
   entities = [AgentWalletEntity::class, LedgerTransactionEntity::class, AuditLogEntity::class, AtwAssetEntity::class],
-  version = 3,
+  version = 4,
   exportSchema = false
 )
 abstract class WalletDatabase : RoomDatabase() {

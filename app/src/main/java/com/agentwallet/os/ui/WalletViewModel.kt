@@ -5,12 +5,26 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agentwallet.os.data.*
 import com.agentwallet.os.firebase.*
+import com.agentwallet.os.network.AgentWalletApiClient
 import com.agentwallet.os.network.GeminiApiClient
+import com.agentwallet.os.network.TenantProvisioningInfo
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.FirebaseFirestoreException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.UUID
-import java.security.MessageDigest
+
+sealed interface TransactionHistoryUiState {
+  data object Unauthenticated : TransactionHistoryUiState
+  data object Loading : TransactionHistoryUiState
+  data class Success(
+    val transactions: List<FirestoreTransaction>,
+    val isRefreshing: Boolean = false
+  ) : TransactionHistoryUiState
+  data class Error(val message: String) : TransactionHistoryUiState
+}
 
 data class ChatMessage(
   val text: String,
@@ -38,8 +52,43 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
   val fcmToken: StateFlow<String?> = AppFirebaseMessagingService.deviceToken
   val fcmMessages: StateFlow<List<FcmNotificationMessage>> = AppFirebaseMessagingService.incomingMessages
 
+  val currentUser: StateFlow<FirebaseUser?> = authService.authState
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), authService.currentUser)
+
+  private val _isAuthLoading = MutableStateFlow(false)
+  val isAuthLoading: StateFlow<Boolean> = _isAuthLoading.asStateFlow()
+
+  private val _authErrorMessage = MutableStateFlow<String?>(null)
+  val authErrorMessage: StateFlow<String?> = _authErrorMessage.asStateFlow()
+
+  private val _authSuccessMessage = MutableStateFlow<String?>(null)
+  val authSuccessMessage: StateFlow<String?> = _authSuccessMessage.asStateFlow()
+
+  // Backend API state
+  private val _isBackendLoading = MutableStateFlow(false)
+  val isBackendLoading: StateFlow<Boolean> = _isBackendLoading.asStateFlow()
+
+  private val _backendErrorMessage = MutableStateFlow<String?>(null)
+  val backendErrorMessage: StateFlow<String?> = _backendErrorMessage.asStateFlow()
+
+  private val _backendStatusMessage = MutableStateFlow<String?>(null)
+  val backendStatusMessage: StateFlow<String?> = _backendStatusMessage.asStateFlow()
+
+  private val _provisioningInfo = MutableStateFlow<TenantProvisioningInfo?>(null)
+  val provisioningInfo: StateFlow<TenantProvisioningInfo?> = _provisioningInfo.asStateFlow()
+
   init {
     fetchFcmToken()
+    viewModelScope.launch {
+      currentUser.collectLatest { user ->
+        if (user == null) {
+          _provisioningInfo.value = null
+          repository.clearFinancialCache()
+        } else {
+          refreshBackendFinancialData()
+        }
+      }
+    }
   }
 
   fun fetchFcmToken() {
@@ -60,20 +109,75 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     }
   }
 
-  val currentUser: StateFlow<FirebaseUser?> = authService.authState
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), authService.currentUser)
-
-  private val _isAuthLoading = MutableStateFlow(false)
-  val isAuthLoading: StateFlow<Boolean> = _isAuthLoading.asStateFlow()
-
-  private val _authErrorMessage = MutableStateFlow<String?>(null)
-  val authErrorMessage: StateFlow<String?> = _authErrorMessage.asStateFlow()
-
-  private val _authSuccessMessage = MutableStateFlow<String?>(null)
-  val authSuccessMessage: StateFlow<String?> = _authSuccessMessage.asStateFlow()
-
   val firestoreVaultAssets: StateFlow<List<FirestoreVaultAsset>> = firestoreService.getVaultAssetsFlow()
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  private val _txRefreshTrigger = MutableStateFlow(0)
+  private val _isTxRefreshing = MutableStateFlow(false)
+  private val _fetchedTxSnapshot = MutableStateFlow<Pair<String, List<FirestoreTransaction>>?>(null)
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val transactionHistoryState: StateFlow<TransactionHistoryUiState> = combine(
+    currentUser,
+    _txRefreshTrigger
+  ) { user, _ -> user }
+    .flatMapLatest { user ->
+      if (user == null) {
+        _fetchedTxSnapshot.value = null
+        flowOf<TransactionHistoryUiState>(TransactionHistoryUiState.Unauthenticated)
+      } else {
+        combine(
+          firestoreService.observeUserTransactions(user.uid),
+          _isTxRefreshing,
+          _fetchedTxSnapshot
+        ) { liveList, refreshing, fetchedPair ->
+          val effectiveList = if (liveList.isNotEmpty() || fetchedPair?.first != user.uid) {
+            liveList
+          } else {
+            fetchedPair.second
+          }
+          TransactionHistoryUiState.Success(
+            transactions = effectiveList,
+            isRefreshing = refreshing
+          ) as TransactionHistoryUiState
+        }
+          .onStart { emit(TransactionHistoryUiState.Loading) }
+          .catch { error ->
+            val firestoreError = generateSequence(error) { it.cause }
+              .filterIsInstance<FirebaseFirestoreException>()
+              .firstOrNull()
+            if (firestoreError == null && error is CancellationException) throw error
+            val rootError = firestoreError ?: error
+            emit(
+              TransactionHistoryUiState.Error(
+                rootError.localizedMessage ?: "Failed to query transaction history from Firestore."
+              )
+            )
+          }
+      }
+    }
+    .stateIn(
+      scope = viewModelScope,
+      started = SharingStarted.WhileSubscribed(5000),
+      initialValue = if (authService.currentUser == null) TransactionHistoryUiState.Unauthenticated else TransactionHistoryUiState.Loading
+    )
+
+  fun refreshTransactionHistory() {
+    val uid = currentUser.value?.uid ?: return
+    if (transactionHistoryState.value is TransactionHistoryUiState.Error) {
+      _txRefreshTrigger.value += 1
+      return
+    }
+    viewModelScope.launch {
+      _isTxRefreshing.value = true
+      val result = firestoreService.fetchUserTransactions(uid)
+      result.onSuccess { list ->
+        _fetchedTxSnapshot.value = uid to list
+      }
+      refreshBackendFinancialData()
+      _isTxRefreshing.value = false
+    }
+  }
 
   val wallets: StateFlow<List<AgentWalletEntity>> = repository.allWallets
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -146,7 +250,6 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
       result.fold(
         onSuccess = { user ->
           _authSuccessMessage.value = "Account created and signed in as ${user.email}"
-          // Save user profile to Firestore
           val profile = UserProfile(
             uid = user.uid,
             email = user.email ?: "",
@@ -192,6 +295,11 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
   fun clearAuthMessages() {
     _authErrorMessage.value = null
     _authSuccessMessage.value = null
+  }
+
+  fun clearBackendMessages() {
+    _backendErrorMessage.value = null
+    _backendStatusMessage.value = null
   }
 
   fun syncAllLocalToFirestore() {
@@ -254,9 +362,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
       val logId = "audit_" + UUID.randomUUID().toString().substring(0, 8)
       val timestamp = System.currentTimeMillis()
       val actor = currentUser.value?.email ?: "did:agent:enterprise:system"
-      val rawPayload = "$logId:$eventType:$description:$actor:$timestamp"
-      val digest = MessageDigest.getInstance("SHA-256").digest(rawPayload.toByteArray())
-      val hash = "SHA256:" + digest.joinToString("") { "%02x".format(it) }
+      val hash = WalletRepository.computeSha256Hex("$logId:$eventType:$description:$actor:$timestamp")
       val log = AuditLogEntity(
         id = logId,
         timestamp = timestamp,
@@ -267,17 +373,19 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
       )
       dao.insertAuditLog(log)
 
-      // Also replicate to Firestore
-      val cloudLog = FirestoreAuditLog(
-        id = logId,
-        timestamp = log.timestamp,
-        eventType = eventType,
-        description = description,
-        actor = actor,
-        cryptographicHash = hash,
-        userId = currentUser.value?.uid ?: ""
-      )
-      firestoreService.saveAuditLog(cloudLog)
+      val uid = currentUser.value?.uid
+      if (!uid.isNullOrBlank()) {
+        val cloudLog = FirestoreAuditLog(
+          id = logId,
+          timestamp = log.timestamp,
+          eventType = eventType,
+          description = description,
+          actor = actor,
+          cryptographicHash = hash,
+          userId = uid
+        )
+        firestoreService.saveAuditLog(cloudLog)
+      }
     }
   }
 
@@ -292,7 +400,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
   // Chat copilot state
   private val _chatMessages = MutableStateFlow<List<ChatMessage>>(
     listOf(
-      ChatMessage("Hello! I am your Samsung ATW Key Generator Copilot. I can help you configure X.509 certificates, RSA private keys (2048/4096 bit), Certificate Signing Requests (CSRs), and security compliance guidelines for Authorized Testing Workshops. How can I assist you today?", false)
+      ChatMessage("Hello! I am your Agent Wallet OS & ATW Copilot. I can help you configure wallets, double-entry policies, X.509 certificates, RSA private keys, and CSRs. How can I assist you today?", false)
     )
   )
   val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
@@ -308,8 +416,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
 
     viewModelScope.launch {
       val contextBuilder = buildString {
-        append("Firebase Backend: Connected to wallet-54645\n")
+        append("Firebase Backend: Connected to ${FirebaseAuthService.FIREBASE_PROJECT_ID}\n")
         append("Current User: ${currentUser.value?.email ?: "Guest"}\n")
+        append("Active Wallets: ${wallets.value.size}\n")
         append("Generated ATW Assets in Vault:\n")
         atwAssets.value.forEach { a ->
           append("- [${a.assetType}] ${a.name} (KeySize=${a.keySize}, CN=${a.commonName}, Org=${a.organization})\n")
@@ -359,7 +468,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     }
   }
 
-  // Legacy compatibility methods for existing tabs/screens
+  // PostgreSQL Financial Backend Integration (Sole System of Record)
   private val _lastPaymentResult = MutableStateFlow<PaymentResult?>(null)
   val lastPaymentResult: StateFlow<PaymentResult?> = _lastPaymentResult.asStateFlow()
 
@@ -367,7 +476,258 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     _lastPaymentResult.value = null
   }
 
-  fun simulatePaymentChallenge(walletId: String, vendorName: String, requestedAmount: Long, protocol: String, chain: String) {}
-  fun createWallet(name: String, org: String, bal: Long, monthly: Long, perReq: Long, vendors: String, chains: String, approval: Boolean) {}
-  fun depositFunds(walletId: String, amount: Long) {}
+  fun refreshBackendFinancialData() {
+    if (currentUser.value == null) return
+    if (!AgentWalletApiClient.isBackendConfigured()) {
+      _backendErrorMessage.value = "Set BACKEND_URL in Secrets to sync with the PostgreSQL ledger."
+      return
+    }
+    viewModelScope.launch {
+      _isBackendLoading.value = true
+      _backendErrorMessage.value = null
+
+      val meResult = AgentWalletApiClient.fetchMe()
+      val me = meResult.getOrNull()
+      if (me != null) {
+        _provisioningInfo.value = me
+        if (me.provisioningStatus != "ACTIVE") {
+          repository.clearFinancialCache()
+          _backendStatusMessage.value = null
+          _isBackendLoading.value = false
+          return@launch
+        }
+      } else {
+        meResult.exceptionOrNull()?.let { err ->
+          _backendErrorMessage.value = err.localizedMessage ?: "Failed to verify tenant membership."
+        }
+      }
+
+      val walletsResult = AgentWalletApiClient.fetchWallets()
+      walletsResult.onSuccess { list ->
+        repository.replaceBackendWallets(list)
+      }.onFailure { err ->
+        _backendErrorMessage.value = err.localizedMessage ?: "Failed to load wallets from backend."
+      }
+
+      val txResult = AgentWalletApiClient.fetchTransactions()
+      txResult.onSuccess { list ->
+        repository.replaceBackendTransactions(list)
+      }
+
+      val auditResult = AgentWalletApiClient.fetchAuditEvents()
+      auditResult.onSuccess { list ->
+        if (list.isNotEmpty()) {
+          repository.replaceBackendAuditLogs(list)
+        }
+      }
+
+      _isBackendLoading.value = false
+    }
+  }
+
+  fun requestTenantAccess(organizationName: String) {
+    if (currentUser.value == null) {
+      _backendErrorMessage.value = "Sign in with Firebase first."
+      return
+    }
+    if (organizationName.isBlank()) {
+      _backendErrorMessage.value = "Enter an organization name to request tenant access."
+      return
+    }
+    if (!AgentWalletApiClient.isBackendConfigured()) {
+      _backendErrorMessage.value = "Configure BACKEND_URL in Secrets before requesting tenant approval."
+      return
+    }
+    viewModelScope.launch {
+      _isBackendLoading.value = true
+      _backendErrorMessage.value = null
+      val res = AgentWalletApiClient.requestTenantAccess(organizationName.trim())
+      res.fold(
+        onSuccess = { info ->
+          _provisioningInfo.value = info
+          _backendStatusMessage.value = "Access request submitted for '${organizationName.trim()}'. A tenant administrator must approve your account."
+        },
+        onFailure = { err ->
+          _backendErrorMessage.value = err.localizedMessage ?: "Failed to submit tenant access request."
+        }
+      )
+      _isBackendLoading.value = false
+    }
+  }
+
+  fun createWallet(
+    name: String,
+    org: String,
+    bal: Long,
+    monthly: Long,
+    perReq: Long,
+    vendors: String,
+    chains: String,
+    approval: Boolean,
+    currency: String = "USD"
+  ) {
+    if (currentUser.value == null) {
+      _backendErrorMessage.value = "Sign in with Firebase to create a wallet in the backend ledger."
+      return
+    }
+    if (!AgentWalletApiClient.isBackendConfigured()) {
+      _backendErrorMessage.value = "Configure BACKEND_URL in Secrets to create backend wallets."
+      return
+    }
+    viewModelScope.launch {
+      _isBackendLoading.value = true
+      _backendErrorMessage.value = null
+      _backendStatusMessage.value = null
+
+      val res = AgentWalletApiClient.createWallet(
+        name = name,
+        initialBalanceUnits = bal,
+        monthlyLimitUnits = monthly,
+        perRequestLimitUnits = perReq,
+        allowedVendors = vendors,
+        allowedChains = chains,
+        requireApproval = approval,
+        currency = currency
+      )
+      res.fold(
+        onSuccess = { wallet ->
+          repository.upsertWalletCache(wallet)
+          _backendStatusMessage.value = "Created ${wallet.currency} backend wallet '${wallet.name}'."
+          refreshBackendFinancialData()
+        },
+        onFailure = { err ->
+          _backendErrorMessage.value = err.localizedMessage ?: "Failed to create wallet."
+        }
+      )
+      _isBackendLoading.value = false
+    }
+  }
+
+  fun depositFunds(walletId: String, amount: Long) {
+    if (currentUser.value == null) {
+      _backendErrorMessage.value = "Sign in with Firebase to fund a wallet."
+      return
+    }
+    if (!AgentWalletApiClient.isBackendConfigured()) {
+      _backendErrorMessage.value = "Configure BACKEND_URL in Secrets to fund backend wallets."
+      return
+    }
+    val targetCurrency = wallets.value.find { it.id == walletId }?.currency ?: "USD"
+    viewModelScope.launch {
+      _isBackendLoading.value = true
+      _backendErrorMessage.value = null
+      _backendStatusMessage.value = null
+
+      val idempotencyKey = "fund_${UUID.randomUUID()}"
+      val res = AgentWalletApiClient.fundWallet(
+        walletId = walletId,
+        amountUnits = amount,
+        currency = targetCurrency,
+        idempotencyKey = idempotencyKey
+      )
+      res.fold(
+        onSuccess = { updatedWallet ->
+          repository.upsertWalletCache(updatedWallet)
+          _backendStatusMessage.value = "Funded ${updatedWallet.currency} wallet '${updatedWallet.name}'."
+          refreshBackendFinancialData()
+        },
+        onFailure = { err ->
+          _backendErrorMessage.value = err.localizedMessage ?: "Funding failed."
+        }
+      )
+      _isBackendLoading.value = false
+    }
+  }
+
+  fun simulatePaymentChallenge(
+    walletId: String,
+    vendorName: String,
+    requestedAmount: Long,
+    protocol: String,
+    chain: String
+  ) {
+    if (currentUser.value == null) {
+      _lastPaymentResult.value = PaymentResult(
+        status = "UNAUTHORIZED",
+        receiptHash = "",
+        details = "Sign in with Firebase to authorize payments against the PostgreSQL backend.",
+        policyPassed = false
+      )
+      return
+    }
+    if (!AgentWalletApiClient.isBackendConfigured()) {
+      _lastPaymentResult.value = PaymentResult(
+        status = "UNCONFIGURED",
+        receiptHash = "",
+        details = "Configure BACKEND_URL in Secrets to authorize live payments.",
+        policyPassed = false
+      )
+      return
+    }
+
+    val wallet = wallets.value.find { it.id == walletId }
+    val walletCurrency = wallet?.currency?.uppercase() ?: "USD"
+    if (walletCurrency == "USDC") {
+      _lastPaymentResult.value = PaymentResult(
+        status = "DENIED",
+        receiptHash = "",
+        details = "PayU settles fiat USD/PLN only. USDC blockchain settlement is disabled until live submission & confirmation verification are implemented.",
+        policyPassed = false
+      )
+      return
+    }
+
+    viewModelScope.launch {
+      _isBackendLoading.value = true
+      _backendErrorMessage.value = null
+
+      val idempotencyKey = "pay_${UUID.randomUUID()}"
+      val result = AgentWalletApiClient.authorizePayment(
+        walletId = walletId,
+        vendorName = vendorName,
+        amountUnits = requestedAmount,
+        currency = walletCurrency,
+        protocol = protocol,
+        idempotencyKey = idempotencyKey
+      )
+
+      result.fold(
+        onSuccess = { paymentResult ->
+          _lastPaymentResult.value = paymentResult
+          val uid = currentUser.value?.uid
+          if (!uid.isNullOrBlank()) {
+            // Non-authoritative Firestore audit/presentation mirror for History tab
+            val walletName = wallet?.name ?: "Agent Wallet"
+            firestoreService.saveTransaction(
+              FirestoreTransaction(
+                id = idempotencyKey,
+                timestamp = System.currentTimeMillis(),
+                walletId = walletId,
+                agentName = walletName,
+                vendorName = vendorName,
+                amountUsdc = requestedAmount,
+                currency = walletCurrency,
+                protocol = protocol,
+                chain = "PAYU",
+                status = paymentResult.status,
+                receiptHash = paymentResult.receiptHash,
+                challengeDetails = paymentResult.details,
+                userId = uid
+              )
+            )
+          }
+          refreshBackendFinancialData()
+        },
+        onFailure = { err ->
+          _lastPaymentResult.value = PaymentResult(
+            status = "ERROR",
+            receiptHash = "",
+            details = err.localizedMessage ?: "Payment authorization failed.",
+            policyPassed = false
+          )
+        }
+      )
+      _isBackendLoading.value = false
+    }
+  }
 }

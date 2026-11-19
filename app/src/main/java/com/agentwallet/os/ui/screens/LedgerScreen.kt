@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.agentwallet.os.data.AuditLogEntity
 import com.agentwallet.os.data.LedgerTransactionEntity
+import com.agentwallet.os.utils.CurrencyUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -97,12 +98,18 @@ fun LedgerScreen(
                       Text("${tx.agentName} → ${tx.vendorName}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                       Text("${tx.protocol} on ${tx.chain} • Status: ${tx.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(
-                      text = "${com.agentwallet.os.utils.CurrencyUtils.formatUsd(tx.amountUsdc)} USDC",
-                      style = MaterialTheme.typography.titleMedium,
-                      fontWeight = FontWeight.Bold,
-                      color = if (tx.status == "APPROVED") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
-                    )
+                      val txUpper = tx.status.uppercase()
+                      val amountColor = when (txUpper) {
+                        "APPROVED", "CONFIRMED", "SETTLED", "COMPLETED" -> MaterialTheme.colorScheme.secondary
+                        "FAILED", "DENIED", "REVERSED", "CANCELED", "REJECTED" -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.tertiary
+                      }
+                      Text(
+                        text = CurrencyUtils.formatAmount(tx.amountUsdc, tx.currency),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = amountColor
+                      )
                   }
 
                   Spacer(modifier = Modifier.height(4.dp))
@@ -117,11 +124,11 @@ fun LedgerScreen(
                       Spacer(modifier = Modifier.height(2.dp))
                       Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("DR  ${tx.debitAccountId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${com.agentwallet.os.utils.CurrencyUtils.formatUsd(tx.amountUsdc)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text(CurrencyUtils.formatAmount(tx.amountUsdc, tx.currency), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                       }
                       Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("CR  ${tx.creditAccountId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${com.agentwallet.os.utils.CurrencyUtils.formatUsd(tx.amountUsdc)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text(CurrencyUtils.formatAmount(tx.amountUsdc, tx.currency), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                       }
                     }
                   }

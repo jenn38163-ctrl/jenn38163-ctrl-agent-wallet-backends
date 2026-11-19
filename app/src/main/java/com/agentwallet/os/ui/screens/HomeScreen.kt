@@ -31,7 +31,8 @@ fun HomeScreen(
   onNavigateToCsr: () -> Unit,
   onNavigateToCert: () -> Unit,
   onNavigateToVault: () -> Unit,
-  onNavigateToFirebaseAuth: () -> Unit
+  onNavigateToFirebaseAuth: () -> Unit,
+  onNavigateToTransactions: () -> Unit = {}
 ) {
   val privateKeyCount = assets.count { it.assetType == "PRIVATE_KEY" }
   val csrCount = assets.count { it.assetType == "CSR" }
@@ -162,6 +163,47 @@ fun HomeScreen(
               }
               Text(
                 text = if (currentUser != null) "Logged in as ${currentUser.email}" else "Email/Password Auth • Tap to sign in",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+          }
+          Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+      }
+    }
+
+    // Firestore Transaction History Card
+    item {
+      Card(
+        onClick = onNavigateToTransactions,
+        modifier = Modifier.fillMaxWidth().testTag("home_transaction_history_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+      ) {
+        Row(
+          modifier = Modifier.padding(16.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(42.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+            }
+            Column {
+              Text("Transaction History", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+              Text(
+                text = "View pending & completed Firestore payments",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
               )

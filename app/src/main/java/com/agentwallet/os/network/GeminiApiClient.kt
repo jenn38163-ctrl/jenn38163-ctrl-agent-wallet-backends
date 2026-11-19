@@ -1,13 +1,14 @@
 package com.agentwallet.os.network
 
 import com.agentwallet.os.BuildConfig
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -19,14 +20,21 @@ object GeminiApiClient {
     .build()
 
   suspend fun askCopilot(prompt: String, contextInfo: String): String = withContext(Dispatchers.IO) {
-    // Production Blocked: Gemini API key has been removed from the client side.
-    // We now route Copilot requests through the Agent Wallet Backend boundary.
-    val backendUrl = BuildConfig.BACKEND_URL
+    val backendUrl = BuildConfig.BACKEND_URL.trim().trimEnd('/')
     if (backendUrl.isBlank() || backendUrl == "http://localhost:8080") {
       return@withContext "Agent Wallet Backend is not configured. Please set BACKEND_URL in your Secrets panel to enable the AI Copilot."
     }
 
-    val systemInstruction = "You are the expert Financial & Policy Copilot for Agent Wallet OS — an AI-agent payment wallet, policy engine, double-entry ledger, and x402/MPP payment protocol gateway. Context:\n$contextInfo"
+    val idToken = runCatching {
+      FirebaseAuth.getInstance().currentUser?.getIdToken(false)?.await()?.token
+    }.getOrNull()
+
+    if (idToken.isNullOrBlank()) {
+      return@withContext "Please sign in with Firebase to authenticate AI Copilot requests with the backend."
+    }
+
+    val systemInstruction =
+      "You are the expert Financial & Policy Copilot for Agent Wallet OS — an AI-agent payment wallet, policy engine, double-entry ledger, and x402/MPP payment protocol gateway. Context:\n$contextInfo"
     val fullPrompt = "$systemInstruction\n\nUser Request: $prompt"
 
     val jsonBody = JSONObject().apply {
@@ -37,6 +45,7 @@ object GeminiApiClient {
 
     val request = Request.Builder()
       .url("$backendUrl/v1/ai/gemini")
+      .header("Authorization", "Bearer $idToken")
       .post(body)
       .build()
 

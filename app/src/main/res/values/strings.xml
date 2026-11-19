@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">Paynet &amp; Suite</string>
+    <string name="tx_history_title">Transaction History</string>
+    <string name="tx_history_subtitle">Live Firestore payment records</string>
+    <string name="tx_history_refresh">Refresh</string>
+    <string name="tx_history_search_hint">Search vendor, protocol, chain, or ID</string>
+    <string name="tx_history_filter_all">All</string>
+    <string name="tx_history_filter_pending">Pending</string>
+    <string name="tx_history_filter_completed">Completed</string>
+    <string name="tx_history_filter_failed">Failed</string>
+    <string name="tx_history_empty_title">No Transactions Found</string>
+    <string name="tx_history_empty_body">No payment records in Cloud Firestore match your account or active filter yet.</string>
+    <string name="tx_history_auth_title">Sign In Required</string>
+    <string name="tx_history_auth_body">Sign in with your Firebase account to query your personal transaction history from Cloud Firestore.</string>
+    <string name="tx_history_sign_in_cta">Go to Sign In</string>
+    <string name="tx_history_retry">Retry Query</string>
 </resources>
+
