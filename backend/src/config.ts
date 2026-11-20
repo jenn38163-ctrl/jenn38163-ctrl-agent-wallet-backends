@@ -32,7 +32,7 @@ const s = z.object({
   PAYU_RECONCILE_AGE_SECONDS: z.coerce.number().int().positive().default(60),
 
   // Settlement Outbox Worker Configuration
-  SETTLEMENT_WORKER_ENABLED: z.enum(["true", "false"]).default("true"),
+  SETTLEMENT_WORKER_ENABLED: z.enum(["true", "false"]).optional(),
   SETTLEMENT_POLL_MS: z.coerce.number().int().positive().default(5000),
   SETTLEMENT_STALE_LOCK_SECONDS: z.coerce.number().int().positive().default(120),
   SETTLEMENT_MAX_RETRIES: z.coerce.number().int().positive().default(5),
@@ -51,9 +51,11 @@ export function parseRuntimeConfig(env: NodeJS.ProcessEnv) {
   const isProd = parsed.NODE_ENV === "production";
   return {
     ...parsed,
-    // Fail-safe in production: require explicit opt-in for boot-time DDL or credential seeding.
+    // Fail-safe in production: require explicit opt-in for boot-time DDL, credential seeding, and background outbox worker.
     AUTO_MIGRATE: (parsed.AUTO_MIGRATE ?? (isProd ? "false" : "true")) as "true" | "false",
     SEED_CREDENTIALS_ON_BOOT: (parsed.SEED_CREDENTIALS_ON_BOOT ??
+      (isProd ? "false" : "true")) as "true" | "false",
+    SETTLEMENT_WORKER_ENABLED: (parsed.SETTLEMENT_WORKER_ENABLED ??
       (isProd ? "false" : "true")) as "true" | "false"
   };
 }

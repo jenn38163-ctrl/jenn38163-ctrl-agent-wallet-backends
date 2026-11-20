@@ -717,16 +717,19 @@ describe("Railway Deployment Readiness, SSL Resolution & Safe Migrations", () =>
     });
     expect(prodDefaults.AUTO_MIGRATE).toBe("false");
     expect(prodDefaults.SEED_CREDENTIALS_ON_BOOT).toBe("false");
+    expect(prodDefaults.SETTLEMENT_WORKER_ENABLED).toBe("false");
 
     const prodOptIn = parseRuntimeConfig({
       NODE_ENV: "production",
       DATABASE_URL: "postgresql://user:pass@host:5432/db",
       CORS_ORIGIN: "https://app.agentwallet.os",
       AUTO_MIGRATE: "true",
-      SEED_CREDENTIALS_ON_BOOT: "true"
+      SEED_CREDENTIALS_ON_BOOT: "true",
+      SETTLEMENT_WORKER_ENABLED: "true"
     });
     expect(prodOptIn.AUTO_MIGRATE).toBe("true");
     expect(prodOptIn.SEED_CREDENTIALS_ON_BOOT).toBe("true");
+    expect(prodOptIn.SETTLEMENT_WORKER_ENABLED).toBe("true");
 
     expect(() =>
       parseRuntimeConfig({
