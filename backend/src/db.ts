@@ -2,18 +2,22 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { config } from "./config.js";
 
-function resolveSslConfig(): pg.PoolConfig["ssl"] {
-  if (config.DATABASE_SSL === "false") {
+export function resolveSslConfig(
+  databaseUrl: string = config.DATABASE_URL,
+  databaseSsl: "true" | "false" | undefined = config.DATABASE_SSL,
+  rejectUnauthorized: "true" | "false" = config.DATABASE_SSL_REJECT_UNAUTHORIZED
+): pg.PoolConfig["ssl"] {
+  if (databaseSsl === "false") {
     return false;
   }
   const requiresSsl =
-    config.DATABASE_SSL === "true" ||
-    /[?&]sslmode=(require|verify-ca|verify-full)/i.test(config.DATABASE_URL);
+    databaseSsl === "true" ||
+    /[?&]sslmode=(require|verify-ca|verify-full)/i.test(databaseUrl);
   if (!requiresSsl) {
     return undefined;
   }
   return {
-    rejectUnauthorized: config.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false"
+    rejectUnauthorized: rejectUnauthorized !== "false"
   };
 }
 
@@ -23,6 +27,10 @@ export const pool = new pg.Pool({
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
   ssl: resolveSslConfig()
+});
+
+pool.on("error", (err) => {
+  console.error("[pg.Pool] Unexpected idle client error:", err?.message || err);
 });
 
 export const db = drizzle(pool);

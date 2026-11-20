@@ -225,20 +225,38 @@ export async function migrate() {
     END;
     $$ LANGUAGE plpgsql`,
 
-    `DROP TRIGGER IF EXISTS trg_journal_lines_immutable ON journal_lines`,
-    `CREATE TRIGGER trg_journal_lines_immutable
-      BEFORE UPDATE OR DELETE ON journal_lines
-      FOR EACH ROW EXECUTE FUNCTION prevent_immutable_mutation()`,
+    `DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'trg_journal_lines_immutable' AND NOT tgisinternal
+      ) THEN
+        CREATE TRIGGER trg_journal_lines_immutable
+          BEFORE UPDATE OR DELETE ON journal_lines
+          FOR EACH ROW EXECUTE FUNCTION prevent_immutable_mutation();
+      END IF;
+    END $$`,
 
-    `DROP TRIGGER IF EXISTS trg_audit_events_immutable ON audit_events`,
-    `CREATE TRIGGER trg_audit_events_immutable
-      BEFORE UPDATE OR DELETE ON audit_events
-      FOR EACH ROW EXECUTE FUNCTION prevent_immutable_mutation()`,
+    `DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'trg_audit_events_immutable' AND NOT tgisinternal
+      ) THEN
+        CREATE TRIGGER trg_audit_events_immutable
+          BEFORE UPDATE OR DELETE ON audit_events
+          FOR EACH ROW EXECUTE FUNCTION prevent_immutable_mutation();
+      END IF;
+    END $$`,
 
-    `DROP TRIGGER IF EXISTS trg_journal_entries_no_delete ON journal_entries`,
-    `CREATE TRIGGER trg_journal_entries_no_delete
-      BEFORE DELETE ON journal_entries
-      FOR EACH ROW EXECUTE FUNCTION prevent_immutable_mutation()`,
+    `DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'trg_journal_entries_no_delete' AND NOT tgisinternal
+      ) THEN
+        CREATE TRIGGER trg_journal_entries_no_delete
+          BEFORE DELETE ON journal_entries
+          FOR EACH ROW EXECUTE FUNCTION prevent_immutable_mutation();
+      END IF;
+    END $$`,
 
     `CREATE OR REPLACE FUNCTION validate_journal_entry_update() RETURNS trigger AS $$
     BEGIN
@@ -258,10 +276,16 @@ export async function migrate() {
     END;
     $$ LANGUAGE plpgsql`,
 
-    `DROP TRIGGER IF EXISTS trg_journal_entries_validate_update ON journal_entries`,
-    `CREATE TRIGGER trg_journal_entries_validate_update
-      BEFORE UPDATE ON journal_entries
-      FOR EACH ROW EXECUTE FUNCTION validate_journal_entry_update()`,
+    `DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'trg_journal_entries_validate_update' AND NOT tgisinternal
+      ) THEN
+        CREATE TRIGGER trg_journal_entries_validate_update
+          BEFORE UPDATE ON journal_entries
+          FOR EACH ROW EXECUTE FUNCTION validate_journal_entry_update();
+      END IF;
+    END $$`,
 
     `CREATE OR REPLACE FUNCTION enforce_double_entry_balance() RETURNS trigger AS $$
     DECLARE
@@ -282,16 +306,25 @@ export async function migrate() {
     END;
     $$ LANGUAGE plpgsql`,
 
-    `DROP TRIGGER IF EXISTS trg_enforce_double_entry_balance ON journal_lines`,
-    `CREATE CONSTRAINT TRIGGER trg_enforce_double_entry_balance
-      AFTER INSERT OR UPDATE OR DELETE ON journal_lines
-      DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION enforce_double_entry_balance()`
+    `DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'trg_enforce_double_entry_balance' AND NOT tgisinternal
+      ) THEN
+        CREATE CONSTRAINT TRIGGER trg_enforce_double_entry_balance
+          AFTER INSERT OR UPDATE OR DELETE ON journal_lines
+          DEFERRABLE INITIALLY DEFERRED
+          FOR EACH ROW EXECUTE FUNCTION enforce_double_entry_balance();
+      END IF;
+    END $$`
   ];
 
-  for (const x of q) {
-    await db.execute(sql.raw(x));
-  }
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(88421001)`);
+    for (const x of q) {
+      await tx.execute(sql.raw(x));
+    }
+  });
 }
 
 export async function seedCredentials() {
@@ -299,9 +332,9 @@ export async function seedCredentials() {
     const tokenHash = createHash("sha256").update(config.AGENT_WALLET_API_KEY).digest("hex");
     await db.execute({
       text: `INSERT INTO credentials(organization_id, token_hash, role, scopes)
-             VALUES('AI Corp Enterprises', $1, 'AGENT', $2)
+             VALUES($1, $2, 'AGENT', $3)
              ON CONFLICT (token_hash) DO UPDATE SET scopes = EXCLUDED.scopes`,
-      values: [tokenHash, config.AGENT_WALLET_API_SCOPES]
+      values: [config.SEED_ORGANIZATION_ID, tokenHash, config.AGENT_WALLET_API_SCOPES]
     } as any);
   }
 }

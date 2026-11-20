@@ -13,28 +13,35 @@ const WORKER_ID = `${hostname()}-${randomUUID().slice(0, 8)}`;
 export class SettlementWorker {
   private static interval: NodeJS.Timeout | null = null;
   private static isRunning = false;
+  private static currentTick: Promise<void> | null = null;
 
   static start(pollIntervalMs = config.SETTLEMENT_POLL_MS) {
     if (this.interval || config.SETTLEMENT_WORKER_ENABLED !== "true") return;
     console.log(`[SettlementWorker] Starting background outbox worker (${WORKER_ID})...`);
-    this.interval = setInterval(async () => {
+    this.interval = setInterval(() => {
       if (this.isRunning) return;
       this.isRunning = true;
-      try {
-        await this.processPendingIntents();
-        await this.reconcileSubmittedIntents();
-      } catch (err) {
-        console.error("[SettlementWorker] Error in worker loop:", err);
-      } finally {
-        this.isRunning = false;
-      }
+      this.currentTick = (async () => {
+        try {
+          await this.processPendingIntents();
+          await this.reconcileSubmittedIntents();
+        } catch (err) {
+          console.error("[SettlementWorker] Error in worker loop:", err);
+        } finally {
+          this.isRunning = false;
+          this.currentTick = null;
+        }
+      })();
     }, pollIntervalMs);
   }
 
-  static stop() {
+  static async stop() {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
+    }
+    if (this.currentTick) {
+      await this.currentTick;
     }
   }
 

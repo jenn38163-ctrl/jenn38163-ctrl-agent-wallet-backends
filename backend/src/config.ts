@@ -7,6 +7,9 @@ const s = z.object({
   DATABASE_URL: z.string().min(1),
   DATABASE_SSL: z.enum(["true", "false"]).optional(),
   DATABASE_SSL_REJECT_UNAUTHORIZED: z.enum(["true", "false"]).default("true"),
+  AUTO_MIGRATE: z.enum(["true", "false"]).default("true"),
+  SEED_CREDENTIALS_ON_BOOT: z.enum(["true", "false"]).default("true"),
+  SEED_ORGANIZATION_ID: z.string().min(1).default("AI Corp Enterprises"),
   AGENT_WALLET_API_KEY: z.string().min(8).optional(),
   AGENT_WALLET_API_SCOPES: z
     .string()

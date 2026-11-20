@@ -14,8 +14,10 @@ import { PayUSettlementAction, toPayUSmallestUnit } from "../src/settlement/acti
 import { PimlicoSettlementAction } from "../src/settlement/actions/PimlicoSettlementAction.js";
 import { StarknetCaptureAction } from "../src/settlement/actions/StarknetCaptureAction.js";
 import { SettlementWorker } from "../src/settlement_worker.js";
-import { db } from "../src/db.js";
+import { db, resolveSslConfig } from "../src/db.js";
 import { config } from "../src/config.js";
+import { migrate, seedCredentials } from "../src/migrate.js";
+import { createApp } from "../src/server.js";
 
 function b64url(input: Buffer | string): string {
   return Buffer.from(input)
@@ -645,5 +647,90 @@ describe("PayU Settlement Dispatch, Worker Claiming & Disabled Blockchain Guard"
     const amountMismatchRes = await processPayuWebhookTx(tx, wrongAmountRaw, JSON.parse(wrongAmountRaw));
     expect(amountMismatchRes).toEqual({ statusCode: 409, body: "RECONCILIATION_MISMATCH" });
     expect(queries.some((t) => t.includes("UPDATE settlement_intents"))).toBe(false);
+  });
+});
+
+describe("Railway Deployment Readiness, SSL Resolution & Safe Migrations", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("resolves SSL safely for Railway internal URLs, sslmode=require, and explicit flags", () => {
+    expect(
+      resolveSslConfig("postgresql://postgres:secret@postgres.railway.internal:5432/railway", undefined, "true")
+    ).toBeUndefined();
+    expect(
+      resolveSslConfig("postgresql://user:pass@host:5432/db?sslmode=require", undefined, "true")
+    ).toEqual({ rejectUnauthorized: true });
+    expect(
+      resolveSslConfig("postgresql://user:pass@roundhouse.proxy.rlwy.net:1234/railway", "true", "false")
+    ).toEqual({ rejectUnauthorized: false });
+    expect(
+      resolveSslConfig("postgresql://user:pass@host:5432/db?sslmode=require", "false", "true")
+    ).toBe(false);
+  });
+
+  it("runs migrate() inside an advisory-locked transaction without dropping triggers", async () => {
+    const executedSql: string[] = [];
+    vi.spyOn(db, "transaction").mockImplementation(async (fn: any) => {
+      const tx = {
+        execute: async (q: any) => {
+          const text =
+            typeof q === "string"
+              ? q
+              : Array.isArray(q?.queryChunks)
+                ? q.queryChunks.map((c: any) => (Array.isArray(c?.value) ? c.value.join("") : String(c?.value ?? ""))).join("")
+                : String(q);
+          executedSql.push(text);
+          return { rows: [] };
+        }
+      };
+      return fn(tx);
+    });
+
+    await migrate();
+
+    expect(executedSql.some((s) => s.includes("pg_advisory_xact_lock(88421001)"))).toBe(true);
+    expect(executedSql.some((s) => s.includes("DROP TRIGGER"))).toBe(false);
+    expect(executedSql.some((s) => s.includes("trg_journal_lines_immutable"))).toBe(true);
+  });
+
+  it("hashes AGENT_WALLET_API_KEY in seedCredentials() without inserting demo wallets", async () => {
+    const queries: Array<{ text: string; values?: any[] }> = [];
+    vi.spyOn(db, "execute").mockImplementation(async (q: any) => {
+      queries.push({ text: q?.text || "", values: q?.values });
+      return { rows: [] } as any;
+    });
+
+    await seedCredentials();
+    expect(queries.length).toBe(1);
+    expect(queries[0].text).toContain("INSERT INTO credentials");
+    expect(queries[0].values?.[0]).toBe(config.SEED_ORGANIZATION_ID);
+    expect(queries[0].values?.[1]).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("exposes /healthz and /readyz probes accurately based on database connectivity", async () => {
+    const app = createApp();
+    const server = app.listen(0);
+    const addr = server.address() as any;
+    const baseUrl = `http://127.0.0.1:${addr.port}`;
+
+    try {
+      const healthRes = await fetch(`${baseUrl}/healthz`);
+      expect(healthRes.status).toBe(200);
+      expect(await healthRes.json()).toEqual({ ok: true, service: "agent-wallet-backend" });
+
+      vi.spyOn(db, "execute").mockResolvedValueOnce({ rows: [{ "?column?": 1 }] } as any);
+      const readyOk = await fetch(`${baseUrl}/readyz`);
+      expect(readyOk.status).toBe(200);
+      expect(await readyOk.json()).toEqual({ ok: true, database: "ready" });
+
+      vi.spyOn(db, "execute").mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+      const readyFail = await fetch(`${baseUrl}/readyz`);
+      expect(readyFail.status).toBe(503);
+      expect(await readyFail.json()).toEqual({ ok: false, database: "unavailable" });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

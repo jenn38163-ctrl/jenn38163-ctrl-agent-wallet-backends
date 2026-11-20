@@ -1,8 +1,9 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { sql } from "drizzle-orm";
 import { config } from "./config.js";
-import { db } from "./db.js";
+import { db, pool } from "./db.js";
 import { migrate, seedCredentials } from "./migrate.js";
 import { auth, requireScope, ASSIGNABLE_ROLES, ASSIGNABLE_SCOPES } from "./auth.js";
 import { audit } from "./audit.js";
@@ -59,7 +60,7 @@ export function createApp() {
   app.get("/healthz", (_, res) => res.json({ ok: true, service: "agent-wallet-backend" }));
   app.get("/readyz", async (_, res) => {
     try {
-      await db.execute("select 1");
+      await db.execute(sql`select 1`);
       res.json({ ok: true, database: "ready" });
     } catch {
       res.status(503).json({ ok: false, database: "unavailable" });
@@ -658,9 +659,41 @@ export function createApp() {
 
 export const app = createApp();
 
-if (config.NODE_ENV !== "test" && !process.env.VITEST) {
-  await migrate();
-  await seedCredentials();
+export async function startServer() {
+  if (config.AUTO_MIGRATE === "true") {
+    await migrate();
+  }
+  if (config.SEED_CREDENTIALS_ON_BOOT === "true") {
+    await seedCredentials();
+  }
   SettlementWorker.start();
-  app.listen(config.PORT, () => console.log(`Agent Wallet Backend listening on ${config.PORT}`));
+
+  const server = app.listen(config.PORT, () =>
+    console.log(`Agent Wallet Backend listening on ${config.PORT}`)
+  );
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[Server] Received ${signal}, shutting down gracefully...`);
+    await SettlementWorker.stop();
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 10_000);
+      server.close(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    await pool.end().catch(() => {});
+    process.exit(0);
+  };
+
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  return server;
+}
+
+if (config.NODE_ENV !== "test" && !process.env.VITEST) {
+  await startServer();
 }
