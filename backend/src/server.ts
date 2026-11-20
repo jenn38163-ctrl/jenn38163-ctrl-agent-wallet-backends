@@ -60,8 +60,21 @@ export function createApp() {
   app.get("/healthz", (_, res) => res.json({ ok: true, service: "agent-wallet-backend" }));
   app.get("/readyz", async (_, res) => {
     try {
-      await db.execute(sql`select 1`);
-      res.json({ ok: true, database: "ready" });
+      const check = await db.execute(
+        sql`SELECT
+              to_regclass('public.wallets') IS NOT NULL AS wallets_ready,
+              to_regclass('public.journal_entries') IS NOT NULL AS ledger_ready,
+              to_regclass('public.settlement_intents') IS NOT NULL AS settlement_ready`
+      );
+      const row = check.rows[0] as any;
+      if (!row?.wallets_ready || !row?.ledger_ready || !row?.settlement_ready) {
+        return res.status(503).json({
+          ok: false,
+          database: "connected",
+          schema: "pending_migration"
+        });
+      }
+      res.json({ ok: true, database: "ready", schema: "ready" });
     } catch {
       res.status(503).json({ ok: false, database: "unavailable" });
     }

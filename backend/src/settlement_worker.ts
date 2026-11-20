@@ -14,6 +14,26 @@ export class SettlementWorker {
   private static interval: NodeJS.Timeout | null = null;
   private static isRunning = false;
   private static currentTick: Promise<void> | null = null;
+  private static loggedPendingSchema = false;
+
+  static async runTick() {
+    try {
+      await this.processPendingIntents();
+      await this.reconcileSubmittedIntents();
+      this.loggedPendingSchema = false;
+    } catch (err: any) {
+      if (err?.code === "42P01" || err?.cause?.code === "42P01") {
+        if (!this.loggedPendingSchema) {
+          console.log(
+            "[SettlementWorker] Waiting for database migrations before polling settlement_intents."
+          );
+          this.loggedPendingSchema = true;
+        }
+        return;
+      }
+      throw err;
+    }
+  }
 
   static start(pollIntervalMs = config.SETTLEMENT_POLL_MS) {
     if (this.interval || config.SETTLEMENT_WORKER_ENABLED !== "true") return;
@@ -23,8 +43,7 @@ export class SettlementWorker {
       this.isRunning = true;
       this.currentTick = (async () => {
         try {
-          await this.processPendingIntents();
-          await this.reconcileSubmittedIntents();
+          await this.runTick();
         } catch (err) {
           console.error("[SettlementWorker] Error in worker loop:", err);
         } finally {

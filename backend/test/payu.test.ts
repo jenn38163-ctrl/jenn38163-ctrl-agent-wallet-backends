@@ -35,8 +35,8 @@ describe.runIf(runPgTests)("Financial Kernel PostgreSQL Integration Tests", () =
       text: "SELECT balance, monthly_spent FROM wallets WHERE id=$1",
       values: [walletId]
     } as any);
-    expect((wCheck.rows[0] as any).monthly_spent).toBe("100.50");
-    expect((wCheck.rows[0] as any).balance).toBe("899.500000");
+    expect(Number((wCheck.rows[0] as any).monthly_spent)).toBe(100.5);
+    expect(Number((wCheck.rows[0] as any).balance)).toBe(899.5);
 
     await revertPayment(ledgerRes.entryId);
 

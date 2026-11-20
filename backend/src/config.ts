@@ -7,8 +7,8 @@ const s = z.object({
   DATABASE_URL: z.string().min(1),
   DATABASE_SSL: z.enum(["true", "false"]).optional(),
   DATABASE_SSL_REJECT_UNAUTHORIZED: z.enum(["true", "false"]).default("true"),
-  AUTO_MIGRATE: z.enum(["true", "false"]).default("true"),
-  SEED_CREDENTIALS_ON_BOOT: z.enum(["true", "false"]).default("true"),
+  AUTO_MIGRATE: z.enum(["true", "false"]).optional(),
+  SEED_CREDENTIALS_ON_BOOT: z.enum(["true", "false"]).optional(),
   SEED_ORGANIZATION_ID: z.string().min(1).default("AI Corp Enterprises"),
   AGENT_WALLET_API_KEY: z.string().min(8).optional(),
   AGENT_WALLET_API_SCOPES: z
@@ -43,7 +43,19 @@ const s = z.object({
   PIMLICO_CHAIN_ID: z.string().default("8453")
 });
 
-export const config = s.parse(process.env);
-if (config.NODE_ENV === "production" && config.CORS_ORIGIN === "*") {
-  throw new Error("CORS_ORIGIN cannot be * in production");
+export function parseRuntimeConfig(env: NodeJS.ProcessEnv) {
+  const parsed = s.parse(env);
+  if (parsed.NODE_ENV === "production" && parsed.CORS_ORIGIN === "*") {
+    throw new Error("CORS_ORIGIN cannot be * in production");
+  }
+  const isProd = parsed.NODE_ENV === "production";
+  return {
+    ...parsed,
+    // Fail-safe in production: require explicit opt-in for boot-time DDL or credential seeding.
+    AUTO_MIGRATE: (parsed.AUTO_MIGRATE ?? (isProd ? "false" : "true")) as "true" | "false",
+    SEED_CREDENTIALS_ON_BOOT: (parsed.SEED_CREDENTIALS_ON_BOOT ??
+      (isProd ? "false" : "true")) as "true" | "false"
+  };
 }
+
+export const config = parseRuntimeConfig(process.env);

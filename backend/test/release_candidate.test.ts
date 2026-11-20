@@ -15,7 +15,7 @@ import { PimlicoSettlementAction } from "../src/settlement/actions/PimlicoSettle
 import { StarknetCaptureAction } from "../src/settlement/actions/StarknetCaptureAction.js";
 import { SettlementWorker } from "../src/settlement_worker.js";
 import { db, resolveSslConfig } from "../src/db.js";
-import { config } from "../src/config.js";
+import { config, parseRuntimeConfig } from "../src/config.js";
 import { migrate, seedCredentials } from "../src/migrate.js";
 import { createApp } from "../src/server.js";
 
@@ -709,7 +709,43 @@ describe("Railway Deployment Readiness, SSL Resolution & Safe Migrations", () =>
     expect(queries[0].values?.[1]).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("exposes /healthz and /readyz probes accurately based on database connectivity", async () => {
+  it("defaults AUTO_MIGRATE and SEED_CREDENTIALS_ON_BOOT to false in production unless opted in", () => {
+    const prodDefaults = parseRuntimeConfig({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://user:pass@host:5432/db",
+      CORS_ORIGIN: "https://app.agentwallet.os"
+    });
+    expect(prodDefaults.AUTO_MIGRATE).toBe("false");
+    expect(prodDefaults.SEED_CREDENTIALS_ON_BOOT).toBe("false");
+
+    const prodOptIn = parseRuntimeConfig({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://user:pass@host:5432/db",
+      CORS_ORIGIN: "https://app.agentwallet.os",
+      AUTO_MIGRATE: "true",
+      SEED_CREDENTIALS_ON_BOOT: "true"
+    });
+    expect(prodOptIn.AUTO_MIGRATE).toBe("true");
+    expect(prodOptIn.SEED_CREDENTIALS_ON_BOOT).toBe("true");
+
+    expect(() =>
+      parseRuntimeConfig({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://user:pass@host:5432/db",
+        CORS_ORIGIN: "*"
+      })
+    ).toThrow(/CORS_ORIGIN cannot be \* in production/);
+
+    const devDefaults = parseRuntimeConfig({
+      NODE_ENV: "development",
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/db",
+      CORS_ORIGIN: "*"
+    });
+    expect(devDefaults.AUTO_MIGRATE).toBe("true");
+    expect(devDefaults.SEED_CREDENTIALS_ON_BOOT).toBe("true");
+  });
+
+  it("exposes /healthz and /readyz probes accurately based on database connectivity and schema readiness", async () => {
     const app = createApp();
     const server = app.listen(0);
     const addr = server.address() as any;
@@ -720,10 +756,23 @@ describe("Railway Deployment Readiness, SSL Resolution & Safe Migrations", () =>
       expect(healthRes.status).toBe(200);
       expect(await healthRes.json()).toEqual({ ok: true, service: "agent-wallet-backend" });
 
-      vi.spyOn(db, "execute").mockResolvedValueOnce({ rows: [{ "?column?": 1 }] } as any);
+      vi.spyOn(db, "execute").mockResolvedValueOnce({
+        rows: [{ wallets_ready: true, ledger_ready: true, settlement_ready: true }]
+      } as any);
       const readyOk = await fetch(`${baseUrl}/readyz`);
       expect(readyOk.status).toBe(200);
-      expect(await readyOk.json()).toEqual({ ok: true, database: "ready" });
+      expect(await readyOk.json()).toEqual({ ok: true, database: "ready", schema: "ready" });
+
+      vi.spyOn(db, "execute").mockResolvedValueOnce({
+        rows: [{ wallets_ready: true, ledger_ready: false, settlement_ready: false }]
+      } as any);
+      const schemaMissing = await fetch(`${baseUrl}/readyz`);
+      expect(schemaMissing.status).toBe(503);
+      expect(await schemaMissing.json()).toEqual({
+        ok: false,
+        database: "connected",
+        schema: "pending_migration"
+      });
 
       vi.spyOn(db, "execute").mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
       const readyFail = await fetch(`${baseUrl}/readyz`);
@@ -732,5 +781,12 @@ describe("Railway Deployment Readiness, SSL Resolution & Safe Migrations", () =>
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("SettlementWorker.runTick waits cleanly on PostgreSQL 42P01 undefined_table before migrations", async () => {
+    vi.spyOn(SettlementWorker, "claimIntents").mockRejectedValueOnce(
+      Object.assign(new Error('relation "settlement_intents" does not exist'), { code: "42P01" })
+    );
+    await expect(SettlementWorker.runTick()).resolves.toBeUndefined();
   });
 });
