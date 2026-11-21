@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Global Asset Registry Network</title>
+<style>
+:root{--bg:#f4f7fb;--sf:#fff;--ink:#0f2447;--mut:#5b6b85;--ln:#d5dde9;--ac:#1f5fbf;--bad:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1630;--sf:#13224a;--ink:#e8eefb;--mut:#92a3c4;--ln:#27396b;--ac:#6ea8ff;--bad:#ff7a6b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+header{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}h1{font-size:18px;margin:0}
+main{max-width:900px;margin:0 auto;padding:0 12px 40px}.card{background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:12px;margin-bottom:12px}
+select,input,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--ln);background:var(--bg);color:var(--ink);width:100%}
+label{display:block;font-size:12px;color:var(--mut);margin:8px 0 2px}button{background:var(--ac);color:#fff;border:0;font-weight:600;cursor:pointer;margin-top:10px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}.scroll{overflow-x:auto}table{border-collapse:collapse;font-size:12.5px;width:100%}
+td,th{padding:5px 8px;border-bottom:1px solid var(--ln);text-align:left;white-space:nowrap}pre{white-space:pre-wrap;word-break:break-all;font-size:12.5px;margin:0}
+.err{color:var(--bad)}.mut{color:var(--mut);font-size:13px}#login{max-width:340px;margin:40px auto}
+</style></head><body>
+<div id="login" class="card"><h1>Sign in</h1><label>Username</label><input id="u" autocomplete="username"><label>Password</label><input id="p" type="password" autocomplete="current-password"><button id="lb">Sign in</button><p id="le" class="err"></p></div>
+<div id="app" hidden>
+<header><h1>Global Asset Registry Network</h1><span class="mut" id="who"></span></header>
+<main><div class="card"><label>Action</label><select id="act"></select><div id="form"></div><button id="go">Run</button></div>
+<div class="card"><div id="out" class="scroll mut">Choose an action and run it. Amounts are in cents.</div></div></main></div>
+<script>
+const R=(n,l,d,t)=>[n,l,d||'',t||''];
+const ID=R('id','Asset ID','JMG-RE-TRUST-A-2026-C1-000145'),PID=R('id','Pool ID'),LID=R('id','Loan ID'),PER=R('period','Period (YYYY-MM)','2026-01'),CID=R('id','Card ID');
+const A={
+'Registry: list assets':['GET','/assets'],
+'Registry: register asset':['POST','/assets',[R('issuer','Issuer','JMG'),R('asset_class','Class (RE LR TB CM EQ IP DA)','RE'),R('vehicle','Vehicle','TRUST'),R('series','Series','A'),R('year','Year','2026','n'),R('pool','Pool','C1'),R('name','Name'),R('principal_cents','Principal','','n')]],
+'Registry: asset detail':['GET','/assets/{id}',[ID]],
+'Registry: add collateral':['POST','/assets/{id}/collateral',[ID,R('description','Description'),R('value_cents','Value','','n')]],
+'Registry: set channel':['POST','/assets/{id}/channel',[ID,R('channel','Channel','Lending')]],
+'Credit: credit profile':['GET','/assets/{id}/credit',[ID]],
+'Tokens: tokenize asset':['POST','/assets/{id}/tokenize',[ID,R('token_type','Type','trust_unit'),R('units','Units','1000','n')]],
+'Tokens: create party':['POST','/parties',[R('name','Name')]],
+'Tokens: set KYC (admin)':['POST','/parties/{id}/kyc',[R('id','Party ID'),R('status','Status','verified')]],
+'Tokens: issue units':['POST','/assets/{id}/issue',[ID,R('party_id','Party ID'),R('units','Units','','n')]],
+'Tokens: secondary transfer':['POST','/transfers',[R('asset_id','Asset ID'),R('from_party','From party'),R('to_party','To party'),R('units','Units','','n')]],
+'Tokens: holdings':['GET','/assets/{id}/holdings',[ID]],
+'Cards: open card':['POST','/cards',[R('asset_id','Asset ID'),R('party_id','Party ID'),R('limit_cents','Limit','','n')]],
+'Cards: authorize':['POST','/cards/{id}/authorize',[CID,R('amount_cents','Amount','','n'),R('event_id','Event ID (required)')]],
+'Cards: repay':['POST','/cards/{id}/repay',[CID,R('amount_cents','Amount','','n'),R('event_id','Event ID (required)')]],
+'Loans: originate':['POST','/loans',[R('borrower','Borrower'),R('principal_cents','Principal','','n'),R('rate_bps','Rate (bps per year)','600','n'),R('term_months','Term (months)','12','n'),R('start_date','Start date','2026-01-15'),R('asset_id','Asset ID (optional)'),R('pool_id','Pool ID (optional)')]],
+'Loans: list':['GET','/loans'],
+'Loans: schedule':['GET','/loans/{id}/schedule',[LID]],
+'Loans: accrue interest':['POST','/loans/{id}/accrue',[LID,PER]],
+'Loans: record payment':['POST','/loans/{id}/payments',[LID,PER,R('amount_cents','Amount','','n'),R('event_id','Event ID (required)')]],
+'Loans: write off':['POST','/loans/{id}/writeoff',[LID,PER]],
+'REMIC: create pool':['POST','/pools',[R('name','Name'),PER,R('tranches','Tranches, most senior first (JSON)','[{"name":"A","balance_cents":700000,"coupon_bps":400},{"name":"B","balance_cents":300000,"coupon_bps":700}]','j')]],
+'REMIC: pool detail':['GET','/pools/{id}',[PID]],
+'REMIC: run waterfall':['POST','/pools/{id}/waterfall',[PID,PER]],
+'Books: manual journal':['POST','/journal',[PER,R('memo','Memo'),R('lines','Lines (JSON)','[{"account":"1000","debit_cents":100},{"account":"3100","credit_cents":100}]','j')]],
+'Books: trial balance':['GET','/reports/trial-balance',[PER]],
+'Books: income statement':['GET','/reports/income-statement',[PER]],
+'Books: balance sheet':['GET','/reports/balance-sheet',[PER]],
+'Books: close period (admin)':['POST','/periods/{period}/close',[PER]],
+'Ledger: verify chain':['GET','/ledger/verify'],'Ledger: recent blocks':['GET','/ledger?limit=20'],
+'Users: add user (admin)':['POST','/users',[R('username','Username'),R('password','Password (12+ chars)'),R('role','Role','operator')]]};
+const SYM=R('symbol','Symbol','ABC'),PRD=R('period','Period (YYYY-MM)','2026-01'),PRJ=R('id','Project ID');
+Object.assign(A,{
+'Invest: buy':['POST','/investments/buy',[SYM,R('qty','Units','','n'),R('unit_cents','Unit price','','n'),PRD]],
+'Invest: sell (FIFO)':['POST','/investments/sell',[SYM,R('qty','Units','','n'),R('unit_cents','Unit price','','n'),PRD]],
+'Invest: mark to market':['POST','/investments/mark',[SYM,R('unit_cents','Market price','','n'),PRD]],
+'Invest: dividend or interest':['POST','/investments/income',[SYM,R('amount_cents','Amount','','n'),PRD]],
+'Invest: positions':['GET','/investments'],
+'Software: new project':['POST','/software/projects',[R('name','Name'),R('useful_life_months','Useful life (months)','36','n')]],
+'Software: projects':['GET','/software/projects'],
+'Software: record cost':['POST','/software/projects/{id}/costs',[PRJ,R('phase','Phase (preliminary, development, post_implementation)','development'),R('amount_cents','Amount','','n'),PRD,R('description','Description')]],
+'Software: place in service':['POST','/software/projects/{id}/in-service',[PRJ,PRD]],
+'Software: amortize':['POST','/software/projects/{id}/amortize',[PRJ,PRD]],
+'Docs: intake text document':['POST','/documents',[R('filename','File name','note.txt'),R('content_text','Text'),R('loan_id','Loan ID (optional)'),R('asset_id','Asset ID (optional)')]],
+'Docs: list':['GET','/documents',[R('category','Category (optional)')]],
+'Docs: detail':['GET','/documents/{id}',[R('id','Document ID')]],
+'Jurisdiction: set rule (admin)':['POST','/jurisdictions',[R('code','Code','US-NY'),R('name','Name'),R('max_rate_bps','Max rate bps (optional)','','n'),R('required_docs','Required docs (JSON list)','["note"]','j')]],
+'Jurisdiction: list':['GET','/jurisdictions'],
+'Jurisdiction: route':['GET','/jurisdictions/{code}/route',[R('code','Code','US-NY')]],
+'Wallet: provision for card':['POST','/cards/{id}/wallet',[CID,R('per_request_cents','Per-request limit (optional)','','n')]],
+'Wallet: status':['GET','/cards/{id}/wallet',[CID]],
+'Wallet: sync spend into card':['POST','/cards/{id}/wallet/sync',[CID]],
+'Wallet: repay card and refill':['POST','/cards/{id}/wallet/repay',[CID,R('amount_cents','Amount','','n'),R('event_id','Event ID (required)')]],
+'Loans: compliance check':['GET','/loans/{id}/compliance',[LID]]});
+const $=s=>document.querySelector(s);let token='';
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+$('#act').innerHTML=Object.keys(A).map(k=>`<option>${k}</option>`).join('');
+function draw(){const f=A[$('#act').value][2]||[];$('#form').innerHTML=`<div class="row">${f.map(x=>`<div><label>${x[1]}</label><input data-n="${x[0]}" data-t="${x[3]}" value="${esc(x[2]).replace(/"/g,'&quot;')}"></div>`).join('')}</div>`}
+$('#act').onchange=draw;
+async function call(m,p,b){const r=await fetch(p,{method:m,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:b?JSON.stringify(b):undefined});
+ let j;try{j=await r.json()}catch(e){j={}}return[r.status,j]}
+function show(st,j){const o=$('#out');o.className='scroll'+(st>=400?' err':'');
+ const rows=Array.isArray(j)?j:(j&&Array.isArray(j.accounts)?j.accounts:null);
+ let h=`<div class="mut">HTTP ${st}</div>`;
+ if(rows&&rows.length&&typeof rows[0]==='object'){const ks=Object.keys(rows[0]);h+=`<table><tr>${ks.map(k=>`<th>${esc(k)}</th>`).join('')}</tr>${rows.map(r=>`<tr>${ks.map(k=>`<td>${esc(typeof r[k]==='object'?JSON.stringify(r[k]):r[k])}</td>`).join('')}</tr>`).join('')}</table>`;
+  if(!Array.isArray(j)){const {accounts,...rest}=j;h+=`<pre>${esc(JSON.stringify(rest,null,1))}</pre>`}}
+ else h+=`<pre>${esc(JSON.stringify(j,null,1))}</pre>`;o.innerHTML=h}
+$('#go').onclick=async()=>{const [m,path]=A[$('#act').value];let p=path,b={};
+ for(const i of document.querySelectorAll('#form input')){const n=i.dataset.n,t=i.dataset.t;let v=i.value.trim();
+  if(v===''&&(t!==''||/optional/.test(i.previousElementSibling.textContent)))continue;
+  try{if(t==='n')v=Number(v);if(t==='j')v=JSON.parse(v)}catch(e){return show(400,{error:'Invalid JSON in '+n})}
+  if(p.includes('{'+n+'}'))p=p.replace('{'+n+'}',encodeURIComponent(v));else b[n]=v}
+ if(m==='GET'){const q=new URLSearchParams(b).toString();if(q)p+=(p.includes('?')?'&':'?')+q;b=undefined}
+ const[st,j]=await call(m,p,b);show(st,j)};
+$('#lb').onclick=async()=>{const[st,j]=await call('POST','/auth/login',{username:$('#u').value,password:$('#p').value});
+ if(st!==200){$('#le').textContent=j.error||'Sign-in failed';return}token=j.token;$('#login').hidden=true;$('#app').hidden=false;$('#who').textContent=$('#u').value+' ('+j.role+')';draw()};
+</script></body></html>
